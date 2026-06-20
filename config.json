@@ -1,0 +1,10 @@
+{
+  "resume_path": "D:\\AI resume automater\\resume\\main.tex",
+  "jd_input_path": "D:\\AI resume automater\\jd_input.txt",
+  "output_dir": "D:\\AI resume automater\\output",
+  "auto_open_output": true,
+  "target_ats_score": 95,
+  "latex_compiler": "pdflatex",
+  "sections_to_rewrite": ["Career Objective", "Experience", "Projects", "Skills"],
+  "sections_to_lock": ["Education"]
+}

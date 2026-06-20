@@ -1,0 +1,29 @@
+# Output folder — generated per job, never committed
+output/
+
+# JD input — personal content, not tracked
+jd_input.txt
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.fls
+*.fdb_latexmk
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (if ever added)
+.env

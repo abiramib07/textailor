@@ -1,0 +1,208 @@
+\documentclass[a4paper]{article}
+    \usepackage{fullpage}
+    \usepackage{amsmath}
+    \usepackage{amssymb}
+    \usepackage{textcomp}
+    \usepackage[utf8]{inputenc}
+    \usepackage[T1]{fontenc}
+    \usepackage[hidelinks]{hyperref}
+    \usepackage[left=2cm, right=2cm, top=2cm]{geometry}
+    \usepackage{longtable}
+    \textheight=10in
+    \pagestyle{empty}
+    \raggedright
+    %\renewcommand{\encodingdefault}{cg}
+%\renewcommand{\rmdefault}{lgrcmr}
+\def\bull{\vrule height 0.8ex width .7ex depth -.1ex }
+% DEFINITIONS FOR RESUME %%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\area} [2] {
+    \vspace*{-9pt}
+    \begin{verse}
+        \textbf{#1}   #2
+    \end{verse}
+}
+\newcommand{\lineunder} {
+    \vspace*{-8pt} \\
+    \hspace*{-18pt} \hrulefill \\
+}
+\newcommand{\header} [1] {
+    {\hspace*{-18pt}\vspace*{6pt} \textsc{#1}}
+    \vspace*{-6pt} \lineunder
+}
+\newcommand{\employer} [3] {
+    { \textbf{#1} (#2)\\ \underline{\textbf{\emph{#3}}}\\  }
+}
+\newcommand{\contact} [3] {
+    \vspace*{-10pt}
+    \begin{center}
+        {\Huge \scshape {#1}}\\
+        #2 \\ #3
+    \end{center}
+    \vspace*{-8pt}
+}
+\newenvironment{achievements}{
+    \begin{list}
+        {$\bullet$}{\topsep 0pt \itemsep -2pt}}{\vspace*{4pt}
+    \end{list}
+}
+\newcommand{\schoolwithcourses} [4] {
+    \textbf{#1} #2 $\bullet$ #3\\
+    #4 \\
+    \vspace*{5pt}
+}
+\newcommand{\school} [4] {
+    \textbf{#1} #2 $\bullet$ #3\\
+    #4 \\
+}
+% END RESUME DEFINITIONS %%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+\vspace*{-40pt}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%     Profile
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\vspace*{-2pt}
+\begin{center}
+    {\Huge \scshape {ABIRAMI B}}\\
+    \vspace*{2pt}
+    \ { AI Developer}\\
+    \vspace*{2pt}
+    \href{mailto:abiramib1213@gmail.com}{abiramib1213@gmail.com} | \href{tel:7708872650}{7708872650}\\
+    \vspace*{2pt}
+\end{center}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%     Career Objective
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\header{Career Objective}
+\vspace{2mm}
+Passionate AI developer with hands-on experience in building intelligent chatbots, leveraging Natural Language Processing (NLP) and Large Language Models (LLMs) to create innovative solutions.Eager to contribute to cutting-edge AI projects, and thrive in environments that foster continuous learning and growth.
+\vspace{6mm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%
+%     Experience
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\header{Experience}
+\vspace{2mm}
+\textbf{Yectra Technologies}\textbf{ |  AI Developer} \hfill Coimbatore | 2024 - Present\\
+\vspace{-3mm}
+\begin{itemize} \itemsep -3pt
+\item[] \textbf {
+Ongoing }
+\end{itemize}
+
+\vspace{-3mm}
+\begin{itemize} \itemsep -3pt
+
+\item[]  \textbf{Chatbot development for web application:}
+\item[] Leveraged a pre-trained Large Language Model (LLM) from the Hugging Face Transformers library and fine-tuned it for a domain-specific conversational AI chatbot using advanced fine-tuning techniques. Applied quantization methods, including Parameter-Efficient Fine-Tuning (PEFT), Low-Rank Adaptation (LoRA), and Quantized Low-Rank Adaptation (QLoRA), to enhance model performance. Integrated the fine-tuned model with a REST API, enabling seamless user interactions and optimizing question-answering capabilities.
+\end{itemize}
+
+\vspace{-3mm}
+\begin{itemize} \itemsep -3pt
+\item[] \textbf{RAG-Based Chatbot with Memory:}
+\item[]  Developed a history-aware Retrieval-Augmented Generation (RAG) chatbot by integrating external data. Utilized embedding techniques and stored vectorized data in Chroma and Pinecone databases. Applied chunking strategies tailored to specific use cases. Implemented advanced memory management to retain key context and enhance response accuracy with better prompting strategies and personalization.
+\end{itemize}
+
+\vspace{-3mm}
+\begin{itemize} \itemsep -3pt
+\item[]  \textbf{Software Utility Marketplace:}
+\item[]  Designed and developed AI-driven utilities to enhance functionality and usability within a software marketplace.
+\item[]  Implemented a {QR Code Generator} for efficient encoding and decoding of information, enabling seamless data sharing and integration.
+\item[]  Engineered a {Paragraph Summarizer} utilizing advanced natural language processing (NLP) algorithms to deliver precise and concise summaries, optimizing content accessibility and user productivity.
+\end{itemize}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%     Projects
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\header{Projects}
+\vspace{2mm}
+{\textbf{Disaster Classification of Crowd-Sourced Tweets Using Deep Learning}}
+\vspace{-3mm}
+\begin{itemize} \itemsep -3pt
+\item[] Developed a multimodal deep learning classification model that analyzes both text and image data from crowd-sourced tweets. The model classifies disaster events, contributing to more effective disaster response and management.
+\end{itemize}
+\vspace*{3mm}
+{\textbf{Amazon Clone Website}}
+\vspace{-3mm}
+\begin{itemize} \itemsep -3pt
+\item[]  Built a front-end Amazon clone website, demonstrating expertise in web development. The website features a visually appealing and user-friendly interface to provide an immersive shopping experience.
+\end{itemize}
+\vspace*{3mm}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%     Skills
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\header{Skills}
+\vspace{2mm}
+
+\textbf{Core Development:}
+\vspace{-2mm}
+\begin{itemize} \itemsep -2pt
+    \item Programming Languages: Python, Java, HTML, CSS
+    \item Tools / Platforms: Postman, Docker Desktop, VS Code
+    \item Version Control Systems: Git
+\end{itemize}
+
+\textbf{Data \& Cloud:}
+\vspace{-2mm}
+\begin{itemize} \itemsep -2pt
+    \item Database: NoSQL (Azure Cosmos DB), MongoDB, Chroma
+    \item Cloud Services: Azure
+    \item Data Processing Frameworks: numpy, pandas
+\end{itemize}
+
+\textbf{AI \& Machine Learning:}
+\vspace{-2mm}
+\begin{itemize} \itemsep -2pt
+    \item Machine Learning Frameworks: TensorFlow, PyTorch, Keras
+    \item Generative AI Models: Transformers
+    \item AI/ML Libraries: Hugging Face Transformers
+\end{itemize}
+
+\textbf{API \& Backend:}
+\vspace{-2mm}
+\begin{itemize} \itemsep -2pt
+    \item REST API: Flask, FastAPI
+\end{itemize}
+
+\textbf{Specialized AI Skills:}
+\vspace{-2mm}
+\begin{itemize} \itemsep -2pt
+    \item Fine Tuning: Adapting LLMs for domain-specific tasks
+    \item RAG: Combining LLMs with external data retrieval systems
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%     Education
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\header{Education}
+\vspace{2mm}
+\textbf{Dr.NGP Institute of Technology}\\
+B.Tech in Information Technology \hfill 2020 -- 2024\\
+{\sl CGPA: 87.4\%}\\
+\vspace{2mm}
+\textbf{GRG Matriculation Higher Secondary School}\\
+Higher Secondary Certificate (HSC) \hfill 2019 -- 2020\\
+{\sl Percentage: 70\%}\\
+\vspace{2mm}
+\textbf{GRG Matriculation Higher Secondary School}\\
+Secondary School Leaving Certificate (SSLC) \hfill 2017 -- 2018\\
+{\sl Percentage: 89\%}\\
+\vspace{2mm}
+
+
+
+
+\
+\end{document}

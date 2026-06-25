@@ -1,0 +1,130 @@
+<div class="shell">
+  <!-- ── Header ──────────────────────────────────── -->
+  <header class="topbar">
+    <span class="logo">TexTailor</span>
+    <span class="subtitle">AI Resume Automator</span>
+    <button class="btn-ghost"
+            (click)="viewTemplate()"
+            [disabled]="isGenerating"
+            [title]="isGenerating ? 'Wait for generation to finish' : 'Preview your base resume'">
+      View Template
+    </button>
+  </header>
+
+  <!-- ── Main Layout ─────────────────────────────── -->
+  <main class="layout">
+
+    <!-- LEFT: Input + pipeline panel -->
+    <section class="panel input-panel">
+      <h2 class="panel-title">Job Description</h2>
+      <textarea
+        class="jd-area"
+        [(ngModel)]="jd"
+        placeholder="Paste the full job description here…"
+        [disabled]="isGenerating">
+      </textarea>
+
+      <button
+        class="btn-primary"
+        (click)="generate()"
+        [disabled]="!jd.trim() || isGenerating">
+        <span *ngIf="!isGenerating">Generate Resume</span>
+        <span *ngIf="isGenerating" class="spinner-label">
+          <span class="spinner"></span> Generating…
+        </span>
+      </button>
+
+      <!-- ── Pipeline stepper — shown as soon as generate() is clicked ── -->
+      <div class="stepper" *ngIf="isGenerating || status">
+
+        <!-- Timer + est row -->
+        <div class="stepper-meta">
+          <span class="elapsed" *ngIf="isGenerating">
+            ⏱ {{ elapsedLabel }}
+          </span>
+          <span class="est-label" *ngIf="isGenerating">
+            Est. 45 – 90s total
+          </span>
+          <span class="elapsed done-label" *ngIf="!isGenerating && status?.status === 'done'">
+            ✓ Completed in {{ elapsedLabel }}
+          </span>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill"
+               [style.width.%]="progressPct"
+               [class.bar--done]="status?.status === 'done'">
+          </div>
+        </div>
+        <p class="progress-label">{{ progressPct }}% complete</p>
+
+        <!-- Steps -->
+        <div class="step"
+             *ngFor="let step of displaySteps; let i = index"
+             [class.step--done]="step.status === 'done'"
+             [class.step--running]="step.status === 'running'"
+             [class.step--error]="step.status === 'error'">
+
+          <!-- Icon -->
+          <div class="step-icon">
+            <span *ngIf="step.status === 'pending'" class="icon-pending">{{ i + 1 }}</span>
+            <span *ngIf="step.status === 'running'" class="icon-spin">⟳</span>
+            <span *ngIf="step.status === 'done'" class="icon-done">✓</span>
+            <span *ngIf="step.status === 'error'" class="icon-err">✕</span>
+          </div>
+
+          <!-- Text -->
+          <div class="step-body">
+            <div class="step-header">
+              <span class="step-name">{{ step.name }}</span>
+              <span class="step-elapsed" *ngIf="step.elapsed">{{ step.elapsed }}</span>
+              <span class="step-live" *ngIf="step.status === 'running'">running…</span>
+            </div>
+            <p class="step-detail" *ngIf="step.detail">{{ step.detail }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Score badge -->
+      <div class="score-card" *ngIf="status?.status === 'done'">
+        <span class="score-num" [style.color]="scoreColor">{{ status!.score }}%</span>
+        <span class="score-label">ATS Match — {{ status!.verdict }}</span>
+      </div>
+
+      <!-- Error -->
+      <div class="error-box" *ngIf="status?.status === 'error'">
+        {{ status!.error }}
+      </div>
+    </section>
+
+    <!-- RIGHT: PDF viewer panel -->
+    <section class="panel pdf-panel">
+      <div class="pdf-header">
+        <h2 class="panel-title">
+          <span *ngIf="pdfUrl">Tailored Resume</span>
+          <span *ngIf="showTemplate && !pdfUrl">Template Preview</span>
+          <span *ngIf="!pdfUrl && !showTemplate">Preview</span>
+        </h2>
+        <button class="btn-download" *ngIf="pdfUrl" (click)="download()">
+          ↓ Download PDF
+        </button>
+      </div>
+
+      <div class="pdf-frame-wrap">
+        <iframe *ngIf="pdfUrl"
+          [src]="pdfUrl" class="pdf-frame" title="Tailored Resume">
+        </iframe>
+        <iframe *ngIf="showTemplate && !pdfUrl"
+          [src]="templateUrl" class="pdf-frame" title="Resume Template">
+        </iframe>
+        <div class="pdf-empty" *ngIf="!pdfUrl && !showTemplate">
+          <div class="empty-icon">📄</div>
+          <p>Your tailored resume will appear here after generation.</p>
+          <p class="empty-hint">Or click <strong>View Template</strong> to preview your base resume.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>

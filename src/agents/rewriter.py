@@ -17,8 +17,9 @@ RULES:
 5. Preserve ALL LaTeX commands exactly: \\item[], \\textbf{{}}, \\hfill, \\vspace{{}}, \\begin{{itemize}}, etc.
 6. Only modify the human-readable text INSIDE \\item[] blocks and section prose
 7. Do NOT touch the structure, spacing commands, or custom macros
-8. Output each section wrapped in markers: ===BEGIN SECTION: Name=== and ===END SECTION: Name===
-9. Output ONLY the rewritten LaTeX — no explanation, no markdown fences
+8. ESCAPE these characters in all plain text: & → \\& (P\\&L not P&L), % → \\% (except comment lines starting with %), # → \\#
+9. Output each section wrapped in markers: ===BEGIN SECTION: Name=== and ===END SECTION: Name===
+10. Output ONLY the rewritten LaTeX — no explanation, no markdown fences
 
 MISSING KEYWORDS TO INCORPORATE (only if contextually honest):
 {keywords}
@@ -41,17 +42,23 @@ def _build_section_input(sections: dict, names_to_rewrite: list) -> str:
     return "\n\n".join(blocks)
 
 
+def _escape_ampersands(tex: str) -> str:
+    """Escape bare & that LaTeX would interpret as table-column separators."""
+    # Replace & not already escaped (not preceded by \)
+    return re.sub(r'(?<!\\)&', r'\\&', tex)
+
+
 def _parse_output(raw: str) -> dict:
     """Extract rewritten sections from Claude's marked output."""
     pattern = r"===BEGIN SECTION:\s*(.+?)===(.*?)===END SECTION:\s*\1==="
     matches = re.findall(pattern, raw, re.DOTALL)
     if matches:
-        return {name.strip(): content.strip() for name, content in matches}
+        return {name.strip(): _escape_ampersands(content.strip()) for name, content in matches}
 
     # Fallback: try simpler markers
     pattern2 = r"===SECTION:\s*(.+?)===(.*?)===END==="
     matches2 = re.findall(pattern2, raw, re.DOTALL)
-    return {name.strip(): content.strip() for name, content in matches2}
+    return {name.strip(): _escape_ampersands(content.strip()) for name, content in matches2}
 
 
 def rewrite(

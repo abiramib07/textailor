@@ -5,6 +5,6 @@
   "auto_open_output": true,
   "target_ats_score": 95,
   "latex_compiler": "pdflatex",
-  "sections_to_rewrite": ["Career Objective", "Experience", "Projects", "Skills"],
+  "sections_to_rewrite": ["Professional Summary", "Technical Skills", "Experience"],
   "sections_to_lock": ["Education"]
 }

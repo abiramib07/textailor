@@ -20,14 +20,14 @@ def extract_preamble(tex: str) -> str:
 
 
 def extract_profile(tex: str) -> str:
-    """Block between \\begin{document} and the first \\header{} — name, title, contact."""
-    match = re.search(r"\\begin\{document\}(.*?)(?=\\header\{)", tex, re.DOTALL)
+    """Block between \\begin{document} and the first \\section — name, contact."""
+    match = re.search(r"\\begin\{document\}(.*?)(?=\\section\*?\{)", tex, re.DOTALL)
     return match.group(1).strip() if match else ""
 
 
 def extract_sections(tex: str) -> dict:
     """Return ordered dict of {section_name: raw_latex_content}."""
-    pattern = r"\\header\{([^}]+)\}(.*?)(?=\\header\{|\\end\{document\})"
+    pattern = r"\\section\*?\{([^}]+)\}(.*?)(?=\\section\*?\{|\\end\{document\})"
     matches = re.findall(pattern, tex, re.DOTALL)
     return {name.strip(): content.strip() for name, content in matches}
 

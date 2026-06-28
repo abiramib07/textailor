@@ -1,208 +1,288 @@
-\documentclass[a4paper]{article}
-    \usepackage{fullpage}
-    \usepackage{amsmath}
-    \usepackage{amssymb}
-    \usepackage{textcomp}
-    \usepackage[utf8]{inputenc}
-    \usepackage[T1]{fontenc}
-    \usepackage[hidelinks]{hyperref}
-    \usepackage[left=2cm, right=2cm, top=2cm]{geometry}
-    \usepackage{longtable}
-    \textheight=10in
-    \pagestyle{empty}
-    \raggedright
-    %\renewcommand{\encodingdefault}{cg}
-%\renewcommand{\rmdefault}{lgrcmr}
-\def\bull{\vrule height 0.8ex width .7ex depth -.1ex }
-% DEFINITIONS FOR RESUME %%%%%%%%%%%%%%%%%%%%%%%
-\newcommand{\area} [2] {
-    \vspace*{-9pt}
-    \begin{verse}
-        \textbf{#1}   #2
-    \end{verse}
+\documentclass[11pt, letterpaper]{article}
+
+% --- Font and Encoding Fix for Crisp Output ---
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[protrusion=true,expansion=true,final]{microtype}
+
+% Essential packages
+\usepackage[margin=0.75in]{geometry}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{setspace}
+
+% Hyperlink setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
 }
-\newcommand{\lineunder} {
-    \vspace*{-8pt} \\
-    \hspace*{-18pt} \hrulefill \\
+
+% Remove page numbers
+\pagestyle{empty}
+
+% Prevent awkward word breaks (ATS + resume friendly)
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\tolerance=1000
+\emergencystretch=2em
+
+% Section formatting - Main headings (14pt, bold, uppercase)
+\titleformat{\section}
+    {\fontsize{14}{16}\selectfont\bfseries\uppercase}
+    {}
+    {0em}
+    {}[\titlerule]
+\titlespacing{\section}{0pt}{12pt}{6pt}
+
+% Job title and company formatting with date on a single right-justified line
+\newcommand{\jobheading}[4]{%
+    \noindent\begin{tabularx}{\textwidth}{@{}X r@{}}
+        \fontsize{12}{14}\selectfont\textbf{#1} & \fontsize{11}{13}\selectfont\textit{#2} \\
+        \fontsize{11}{13}\selectfont\textit{#3} & \fontsize{11}{13}\selectfont\textit{#4}
+    \end{tabularx}\vspace{2pt}
 }
-\newcommand{\header} [1] {
-    {\hspace*{-18pt}\vspace*{6pt} \textsc{#1}}
-    \vspace*{-6pt} \lineunder
+
+% Project heading formatting
+\newcommand{\projectheading}[1]{%
+    \vspace{5pt}
+    \noindent\fontsize{11}{13}\selectfont\textbf{#1}
+    \vspace{3pt}
 }
-\newcommand{\employer} [3] {
-    { \textbf{#1} (#2)\\ \underline{\textbf{\emph{#3}}}\\  }
+
+% Bullet point formatting with proper indentation and tighter spacing
+\newcommand{\bulletpoints}[1]{%
+    \begin{itemize}[leftmargin=1.4em, itemsep=2pt, topsep=2pt]
+        #1
+    \end{itemize}
+    \vspace{2pt}
 }
-\newcommand{\contact} [3] {
-    \vspace*{-10pt}
-    \begin{center}
-        {\Huge \scshape {#1}}\\
-        #2 \\ #3
-    \end{center}
-    \vspace*{-8pt}
+
+% Individual bullet item
+\newcommand{\bulletitem}[1]{%
+    \item \fontsize{11}{12}\selectfont #1
 }
-\newenvironment{achievements}{
-    \begin{list}
-        {$\bullet$}{\topsep 0pt \itemsep -2pt}}{\vspace*{4pt}
-    \end{list}
+
+% Technology line formatting (no bullet)
+\newcommand{\techline}[1]{%
+    \noindent\fontsize{10}{12}\selectfont\textbf{Technologies:} #1
+    \vspace{4pt}
 }
-\newcommand{\schoolwithcourses} [4] {
-    \textbf{#1} #2 $\bullet$ #3\\
-    #4 \\
-    \vspace*{5pt}
+
+% Custom skills block for improved ATS clarity
+\newenvironment{skills}{
+    \begin{itemize}[leftmargin=*,label={},itemsep=1pt,parsep=0pt,topsep=0pt]
+}{
+    \end{itemize}
 }
-\newcommand{\school} [4] {
-    \textbf{#1} #2 $\bullet$ #3\\
-    #4 \\
-}
-% END RESUME DEFINITIONS %%%%%%%%%%%%%%%%%%%%%%%
+
 \begin{document}
-\vspace*{-40pt}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%     Profile
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\vspace*{-2pt}
+\setlength{\parindent}{0pt}
+
+% === HEADER ===
 \begin{center}
-    {\Huge \scshape {ABIRAMI B}}\\
-    \vspace*{2pt}
-    \ { AI Developer}\\
-    \vspace*{2pt}
-    \href{mailto:abiramib1213@gmail.com}{abiramib1213@gmail.com} | \href{tel:7708872650}{7708872650}\\
-    \vspace*{2pt}
+    {\fontsize{24}{28}\selectfont\textbf{ABIRAMI B}} \\[3pt]
+    {\fontsize{11}{13}\selectfont
+    7708872650 \,|\, abiramib20.ai@gmail.com \,|\,\href{https://www.linkedin.com/in/abirami-b-15a042213}{linkedin.com/in/abirami-b-15a042213}}
 \end{center}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%     Career Objective
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\header{Career Objective}
-\vspace{2mm}
-Passionate AI developer with hands-on experience in building intelligent chatbots, leveraging Natural Language Processing (NLP) and Large Language Models (LLMs) to create innovative solutions.Eager to contribute to cutting-edge AI projects, and thrive in environments that foster continuous learning and growth.
-\vspace{6mm}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\vspace{6pt}
 
-%
-%     Experience
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\header{Experience}
-\vspace{2mm}
-\textbf{Yectra Technologies}\textbf{ |  AI Developer} \hfill Coimbatore | 2024 - Present\\
-\vspace{-3mm}
-\begin{itemize} \itemsep -3pt
-\item[] \textbf {
-Ongoing }
-\end{itemize}
+% === PROFESSIONAL SUMMARY ===
+\section*{Professional Summary}
+\fontsize{11}{12}\selectfont
+Generative AI Developer with 1.10 years of experience building production-grade AI systems, specializing in RAG-based chatbots, LLM orchestration, and AI-driven analytics platforms. Proficient in Python, FastAPI, LangChain, vector databases, and scalable backend architectures. Experienced in translating business requirements into robust AI solutions using modern LLMs and production-grade AI workflows.
 
-\vspace{-3mm}
-\begin{itemize} \itemsep -3pt
+\vspace{8pt}
 
-\item[]  \textbf{Chatbot development for web application:}
-\item[] Leveraged a pre-trained Large Language Model (LLM) from the Hugging Face Transformers library and fine-tuned it for a domain-specific conversational AI chatbot using advanced fine-tuning techniques. Applied quantization methods, including Parameter-Efficient Fine-Tuning (PEFT), Low-Rank Adaptation (LoRA), and Quantized Low-Rank Adaptation (QLoRA), to enhance model performance. Integrated the fine-tuned model with a REST API, enabling seamless user interactions and optimizing question-answering capabilities.
-\end{itemize}
+% === TECHNICAL SKILLS ===
+\section*{Technical Skills}
+\begin{skills}
+    \item \textbf{Programming:} Python
 
-\vspace{-3mm}
-\begin{itemize} \itemsep -3pt
-\item[] \textbf{RAG-Based Chatbot with Memory:}
-\item[]  Developed a history-aware Retrieval-Augmented Generation (RAG) chatbot by integrating external data. Utilized embedding techniques and stored vectorized data in Chroma and Pinecone databases. Applied chunking strategies tailored to specific use cases. Implemented advanced memory management to retain key context and enhance response accuracy with better prompting strategies and personalization.
-\end{itemize}
+    \item \textbf{Machine Learning:} Supervised \& Unsupervised Learning, Predictive Modeling, Classification, Clustering
 
-\vspace{-3mm}
-\begin{itemize} \itemsep -3pt
-\item[]  \textbf{Software Utility Marketplace:}
-\item[]  Designed and developed AI-driven utilities to enhance functionality and usability within a software marketplace.
-\item[]  Implemented a {QR Code Generator} for efficient encoding and decoding of information, enabling seamless data sharing and integration.
-\item[]  Engineered a {Paragraph Summarizer} utilizing advanced natural language processing (NLP) algorithms to deliver precise and concise summaries, optimizing content accessibility and user productivity.
-\end{itemize}
+    \item \textbf{Generative AI \& NLP:} Large Language Models (LLMs), Retrieval-Augmented Generation (RAG), Prompt Engineering, LLM Fine-tuning, Transformers, Named Entity Recognition (NER), Text Summarization
 
+    \item \textbf{AI Frameworks \& Libraries:} LangChain, LangGraph, LangSmith, Hugging Face Transformers, PyTorch, TensorFlow, Scikit-learn
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%     Projects
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\header{Projects}
-\vspace{2mm}
-{\textbf{Disaster Classification of Crowd-Sourced Tweets Using Deep Learning}}
-\vspace{-3mm}
-\begin{itemize} \itemsep -3pt
-\item[] Developed a multimodal deep learning classification model that analyzes both text and image data from crowd-sourced tweets. The model classifies disaster events, contributing to more effective disaster response and management.
-\end{itemize}
-\vspace*{3mm}
-{\textbf{Amazon Clone Website}}
-\vspace{-3mm}
-\begin{itemize} \itemsep -3pt
-\item[]  Built a front-end Amazon clone website, demonstrating expertise in web development. The website features a visually appealing and user-friendly interface to provide an immersive shopping experience.
-\end{itemize}
-\vspace*{3mm}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%     Skills
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\header{Skills}
-\vspace{2mm}
+    \item \textbf{Data Processing \& Analysis:} NumPy, Pandas, Data Preprocessing, Synthetic Data Generation, Model Evaluation
 
-\textbf{Core Development:}
-\vspace{-2mm}
-\begin{itemize} \itemsep -2pt
-    \item Programming Languages: Python, Java, HTML, CSS
-    \item Tools / Platforms: Postman, Docker Desktop, VS Code
-    \item Version Control Systems: Git
-\end{itemize}
+    \item \textbf{Databases \& Vector Stores:} PostgreSQL, MongoDB, Azure CosmosDB, FAISS, ChromaDB, Vector Database Design
 
-\textbf{Data \& Cloud:}
-\vspace{-2mm}
-\begin{itemize} \itemsep -2pt
-    \item Database: NoSQL (Azure Cosmos DB), MongoDB, Chroma
-    \item Cloud Services: Azure
-    \item Data Processing Frameworks: numpy, pandas
-\end{itemize}
+    \item \textbf{Backend \& System Design:} FastAPI, Flask, RESTful APIs, Microservices Architecture, Asynchronous Processing
 
-\textbf{AI \& Machine Learning:}
-\vspace{-2mm}
-\begin{itemize} \itemsep -2pt
-    \item Machine Learning Frameworks: TensorFlow, PyTorch, Keras
-    \item Generative AI Models: Transformers
-    \item AI/ML Libraries: Hugging Face Transformers
-\end{itemize}
+    \item \textbf{RAG \& Agentic Architectures:} Vector-based RAG Architecture, Multi-Agent Systems, Agentic Workflows, ReAct, MCP and A2A Protocols
 
-\textbf{API \& Backend:}
-\vspace{-2mm}
-\begin{itemize} \itemsep -2pt
-    \item REST API: Flask, FastAPI
-\end{itemize}
+    \item \textbf{ETL \& Data Engineering:} ETL Design Patterns, Data Pipelines, API-Based Data Ingestion
 
-\textbf{Specialized AI Skills:}
-\vspace{-2mm}
-\begin{itemize} \itemsep -2pt
-    \item Fine Tuning: Adapting LLMs for domain-specific tasks
-    \item RAG: Combining LLMs with external data retrieval systems
-\end{itemize}
+    \item \textbf{DevOps \& MLOps:} Microsoft Azure, Docker, Git, Containerization
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
-%     Education
-%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\header{Education}
-\vspace{2mm}
-\textbf{Dr.NGP Institute of Technology}\\
-B.Tech in Information Technology \hfill 2020 -- 2024\\
-{\sl CGPA: 87.4\%}\\
-\vspace{2mm}
-\textbf{GRG Matriculation Higher Secondary School}\\
-Higher Secondary Certificate (HSC) \hfill 2019 -- 2020\\
-{\sl Percentage: 70\%}\\
-\vspace{2mm}
-\textbf{GRG Matriculation Higher Secondary School}\\
-Secondary School Leaving Certificate (SSLC) \hfill 2017 -- 2018\\
-{\sl Percentage: 89\%}\\
-\vspace{2mm}
+    \item \textbf{Data Visualization:} Matplotlib, Seaborn, Plotly
+\end{skills}
 
 
 
+% === EXPERIENCE ===
+\section{Experience}
+\jobheading{Generative AI Developer}{October 2025 -- Present}{KGISL}{Coimbatore, India}
 
-\
+\projectheading{QA-Bot --- AI-Assisted QA Issue Intake Platform}
+\bulletpoints{
+\bulletitem{Designed and deployed an AI-assisted QA intake platform that transforms unstructured tester bug reports into structured, Jira-ready issue summaries with mandatory validation and timestamp enforcement.}
+\bulletitem{Built a multi-stage issue lifecycle system (draft $\rightarrow$ approval $\rightarrow$ archive) with session tracking, attachment handling, and backend-driven Jira integration for issue creation, comments, and file uploads.}
+\bulletitem{Implemented zero-inference summarization workflows using Claude models to ensure generated reports only contain tester-provided information, improving reliability and reducing developer clarification cycles.}
+\bulletitem{Developed multi-issue parsing, natural-language time extraction, and per-client environment mapping supporting 8+ enterprise brokerage environments and workflows.}
+\bulletitem{Integrated read-only Git source grounding to map Jira stories/tasks with related branches and commits, enabling code-aware reproduction context for developers.}
+\bulletitem{Architected and deployed the platform as a long-running production service using FastAPI, Uvicorn, and systemd with journald logging, auto-restart, and local archival of issue evidence and attachments.}
+}
+\techline{Python, FastAPI, PostgreSQL, Claude AI, Jira REST, Systemd}
+
+
+\projectheading{Dolphin Dashboard --- AI-Driven Development \& QA Automation Platform}
+\bulletpoints{
+\bulletitem{Architected and developed an AI-driven development and QA automation platform centered around a dynamically extensible library of 110 composable AI workflow skills spanning development orchestration, deployment automation, UI testing, settlement-cycle QA, debugging, and operational tooling.}
+\bulletitem{Built a filesystem-driven skill orchestration framework where Markdown-defined AI workflows are auto-discovered, categorized, synchronized, and executed at runtime without rebuilds, static manifests, or redeployment.}
+\bulletitem{Designed the DevFlow orchestration system automating the complete software development lifecycle including Jira analysis, planning, implementation, code review, testing, deployment, merge-request workflows, approval gates, and resumable execution state management.}
+\bulletitem{Developed multi-agent QA orchestration pipelines for autonomous UI testing, settlement-cycle validation, equity reconciliation, mismatch diagnosis, contract workflows, browser automation, and environment-aware test execution across enterprise brokerage systems.}
+\bulletitem{Implemented layered orchestration architectures where thin top-level orchestrators coordinate specialized AI sub-agents through gated execution phases with persistent state.json checkpointing and crash-resume recovery.}
+\bulletitem{Built a web-based operational dashboard integrating live workflow execution, AI skill launching, SSH/tmux terminal management, structured logs, request tracing, cycle-state monitoring, and real-time orchestration visibility into a unified keyboard-driven control surface.}
+\bulletitem{Integrated Playwright MCP, Dolphin UI MCP, PostgreSQL tooling, Kubernetes deployment workflows, and distributed environment automation supporting local, VDI K3s/Kubernetes, and multi-tenant QA infrastructure.}
+\bulletitem{Enabled autonomous development and QA operations across multiple enterprise brokerage tenants including UBS, Fyers, Jio, Morgan Stanley, and Opera/MOAP, significantly reducing manual coordination effort through reusable AI-driven automation workflows.}
+}
+\techline{TypeScript, Node.js, Express, Socket.IO, Kubernetes, Playwright, Claude AI}
+
+
+\projectheading{SCQA-Cycle --- Autonomous Settlement Cycle QA Orchestrator}
+\bulletpoints{
+\bulletitem{Designed and implemented an autonomous QA orchestration system that executes the complete DolphinV2 settlement-cycle workflow end-to-end from a single trading-date input, eliminating manual operator intervention during multi-hour QA runs.}
+\bulletitem{Built a sequential stateful execution engine coordinating 25 ordered settlement actions including BOD uploads, trade processing, mismatch resolution, allocation workflows, checker approvals, and contract generation across brokerage QA environments.}
+\bulletitem{Architected a spec-driven orchestration framework where all workflow behavior is dynamically loaded from Markdown-based event/action specifications, enabling runtime extensibility without modifying orchestrator logic.}
+\bulletitem{Developed resilient checkpoint-based execution pipelines with crash recovery, resumable workflows (-{}-resume), context-pressure handling, and idempotent action replay to support long-running autonomous QA operations.}
+\bulletitem{Implemented adaptive QA operating modes including fully autonomous execution, human-in-the-loop review, guided recovery flows, and patch-bypass execution for controlled troubleshooting and defect validation.}
+\bulletitem{Built a self-improving execution model using cycle-local patch generation, global spec promotion, and automated learning-feedback loops that continuously refine orchestration behavior from real settlement-cycle failures.}
+\bulletitem{Integrated Dolphin UI MCP automation, inline PostgreSQL validation, audit logging, screenshot capture, metrics tracking, and structured evidence generation into a fully traceable QA execution pipeline.}
+\bulletitem{Enabled reusable settlement-cycle preparation workflows consumed by QA-Agent, QA-UI-Pilot, and Devbox Testing, forming the foundational orchestration layer for enterprise brokerage QA automation.}
+}
+\techline{Claude AI, PostgreSQL, Dolphin UI MCP, Markdown Spec Engine, Stateful Workflow Orchestration}
+
+
+\projectheading{SCQA-File-Simulate --- Settlement Cycle Test Data Simulation Platform}
+\bulletpoints{
+\bulletitem{Designed and implemented a write-capable settlement-cycle test-data simulation platform that generates, uploads, and validates realistic trade, allocation, contract, and BOD datasets across enterprise brokerage QA environments.}
+\bulletitem{Built a guided human-in-the-loop orchestration workflow enabling operators to dynamically generate custom settlement-cycle records, restamp production templates, execute dry-run impact reviews, and selectively perform DB inserts or API uploads.}
+\bulletitem{Architected a safety-first transactional execution model with explicit approval gates, INSERT-only database mutations, pre-generated rollback scripts, impact verification, and deterministic environment teardown to prevent accidental corruption of live QA environments.}
+\bulletitem{Developed a config-driven simulation engine supporting all 10 settlement-cycle upload cards, including seedable trade/allocation/contract workflows and automated edge-case scenario generation for mismatch validation and settlement defect testing.}
+\bulletitem{Implemented resumable stateful execution pipelines with per-run journals, crash recovery, deterministic replay, and workflow continuation support using -{}-resume and -{}-list execution flags.}
+\bulletitem{Integrated Dolphin API MCP uploads, Dolphin UI MCP browser automation, inline PostgreSQL validation, multipart upload execution, and authoritative API-audit verification into a unified arrange-act-assert testing workflow.}
+\bulletitem{Enabled on-demand generation of code-grounded clean baselines and targeted negative settlement scenarios across multiple brokerage tenants, reducing manual test-data preparation effort for settlement-cycle QA automation.}
+}
+\techline{Python, PostgreSQL, Dolphin API MCP, Dolphin UI MCP, Stateful Workflow Automation}
+
+
+\projectheading{AI-Powered Conversational Platform for API Discovery and Market Intelligence}
+\bulletpoints{
+\bulletitem{Developed an AI-powered conversational interface to interact with REST APIs and deliver intelligent, context-aware responses using Gemini.}
+\bulletitem{Implemented natural language query understanding and routing using YAML-based GET/POST endpoint definitions.}
+\bulletitem{Built a Retrieval-Augmented Generation (RAG) system to semantically discover and select relevant API endpoints from natural language queries.}
+\bulletitem{Designed an orchestrator to manage end-to-end workflows including Swagger/OpenAPI ingestion, synchronization, indexing, and semantic search.}
+\bulletitem{Generated vector embeddings for API endpoints and stored them in Pinecone with rich metadata for accurate filtering and retrieval.}
+\bulletitem{Integrated real-time stock market intelligence for NIFTY 50 and individual stocks using yfinance.}
+\bulletitem{Implemented smart query processing to automatically extract parameters from endpoint-related and market-related user queries.}
+\bulletitem{Enabled voice-driven interactions through audio and speech processing using FFmpeg.}
+}
+\techline{Python, FastAPI, Gemini, Pinecone, RAG, Swagger/OpenAPI, REST APIs, YAML, yfinance, FFmpeg, NLP}
+
+
+\projectheading{AI-Powered Financial Analytics and Portfolio Intelligence Platform}
+\bulletpoints{
+\bulletitem{Developed a backend platform integrating portfolio management, market analysis, and news intelligence using Python, FastAPI, and Flask.}
+\bulletitem{Implemented a SWOT news filter with two modes: Fast keyword-based filtering for instant results and LLM-powered semantic analysis using Google Gemini (gemini-2.5-flash) to categorize news into Strengths, Weaknesses, Opportunities, and Threats.}
+\bulletitem{Built a Dynamic Data Generator within the backend using Google Gemini LLM and Faker to generate realistic, context-aware synthetic data for PostgreSQL databases, supporting primitive, complex, and user-defined data types.}
+\bulletitem{Implemented Portfolio Analysis APIs enabling users to analyze investment portfolios with detailed performance metrics, risk assessment, and AI-generated alerts based on historical returns, volatility, and news sentiment. Users can retrieve: Overview, Holdings Analytics Heatmap, and AI-driven Alerts.}
+\bulletitem{Developed a Holdings API to provide detailed information on individual positions, including quantity, purchase price, current value, P\&L, and risk metrics.}
+\bulletitem{Implemented a Strategy Builder module for options strategies, allowing users to create and analyze strategies programmatically with interactive payoff diagrams generated server-side based on option parameters.}
+\bulletitem{Exposed RESTful APIs for portfolio retrieval, stock screening, historical and real-time stock data, SWOT news analysis, portfolio impact calculations, and strategy evaluation.}
+\bulletitem{Integrated real Nifty 50 stock data via yfinance, including historical investment date selection, accurate P\&L calculation, and live market price updates.}
+\bulletitem{Optimized AI integration with batch processing, confidence scoring, exponential backoff, and rate-limit handling for scalable LLM usage.}
+\bulletitem{Generated structured JSON outputs for portfolio analytics, holdings, strategy evaluation, SWOT news, and synthetic data to facilitate downstream analysis and reporting.}
+\bulletitem{Designed a modular, maintainable backend architecture with comprehensive logging, environment configuration, and error handling for robust production deployment.}
+\bulletitem{Supported future enhancements including predictive modeling, portfolio benchmarking, advanced risk metrics, and expanded AI-driven alerts for proactive investment decisions.}
+}
+\techline{Python, FastAPI, Flask, Google Gemini LLM, Faker, yfinance, PostgreSQL, REST APIs, NLP, JSON, Batch Processing, Portfolio Analysis, Options Strategy Evaluation}
+
+
+\projectheading{Dynamic Document Intelligence and JSON Mapping Engine}
+\bulletpoints{
+\bulletitem{Architected and developed a dynamic document intelligence engine to extract and map data from Word and Excel templates using configurable metadata.}
+\bulletitem{Implemented query-driven value extraction to dynamically identify and capture relevant fields based on user inputs and document context.}
+\bulletitem{Designed a flexible JSON mapping layer to normalize extracted data into standardized schemas for downstream processing.}
+\bulletitem{Enabled configuration-based workflows to support multiple document formats, reducing manual effort and improving automation at scale.}
+}
+\techline{Python, python-docx, OpenPyXL, JSON, Python Scripting, VS Code, PyCharm}
+
+
+
+\jobheading{Generative AI Developer}{April 2024 -- September 2025}{Yectra Technologies}{Coimbatore, India}
+
+\projectheading{AI Analytics Platform - Conversational Data Interface}
+\bulletpoints{
+\bulletitem{Developed production RAG chatbot enabling natural language queries across multiple datasets.}
+\bulletitem{Implemented hybrid retrieval system using FAISS vector database, achieving 85\% answer relevance score in user testing with 200+ queries.}
+\bulletitem{Designed multi-turn conversation handling with LangChain, supporting context retention across 5+ conversation turns.}
+}
+\techline{Python, FastAPI, LangChain, FAISS, OpenAI GPT-4, sentence-transformers}
+
+\projectheading{Natural Language to MongoDB Query Engine}
+\bulletpoints{
+\bulletitem{Built NL-to-MongoDB converter enabling non-technical users to extract insights independently, reducing data team tickets by 40+ requests per week.}
+\bulletitem{Achieved 75\% query accuracy through systematic prompt engineering and validation pipeline testing with 500+ query variations.}
+\bulletitem{Implemented automatic schema analysis and query optimization for collections with 100K+ documents.}
+}
+\techline{LangChain, OpenAI API, MongoDB, Python, JSON Schema Validation}
+
+\projectheading{Predictive Analytics Integration}
+\bulletpoints{
+\bulletitem{Integrated Facebook Prophet forecasting model with conversational interface, enabling stakeholders to generate predictions through natural language.}
+\bulletitem{Delivered sales forecasting with 88\% accuracy on historical data, supporting business planning.}
+}
+\techline{Facebook Prophet, Pandas, NumPy, FastAPI, Python}
+
+\projectheading{Dynamic Visualization System (Multi-Agent Architecture)}
+\bulletpoints{
+\bulletitem{Developed LangGraph-based agent system for automatic chart generation from natural language requests, supporting 10+ chart types.}
+\bulletitem{Implemented iterative refinement capability allowing users to modify visualizations through conversation, improving user adoption by 60\%.}
+\bulletitem{Created reusable visualization templates reducing custom chart development time from 2 hours to 10 minutes.}
+}
+\techline{LangGraph, OpenAI API, Plotly, Python, Multi-agent Systems}
+
+\projectheading{Cross-Dataset Analytics Engine}
+\bulletpoints{
+\bulletitem{Built asynchronous processing pipeline for correlation analysis across multiple data sources, processing 10M+ records efficiently.}
+\bulletitem{Developed pattern recognition algorithms identifying key business relationships, uncovering 3+ actionable insights for stakeholders.}
+\bulletitem{Created automated data ingestion system supporting CSV, JSON, and database connections with schema auto-mapping.}
+}
+\techline{Python, FastAPI, Pandas, NumPy, Asyncio, Background Tasks}
+
+\projectheading{Domain-Specific Chatbot (ROOS - Cloud Kitchen Assistant)}
+\bulletpoints{
+\bulletitem{Fine-tuned open-source LLM using LoRA for cloud kitchen domain}
+\bulletitem{Optimized model training pipeline reducing GPU training time from 6 hours to 3 hours using QLoRA techniques.}
+\bulletitem{Deployed production-ready chatbot handling 200+ daily queries with sub-2-second response time.}
+}
+\techline{Hugging Face Transformers, LoRA/QLoRA, CUDA, FastAPI, Model Deployment}
+
+\vspace{8pt}
+% === EDUCATION ===
+\section{Education}
+\jobheading{B.Tech in Information Technology}{2020 -- 2024}{Dr. N.G.P Institute of Technology}{CGPA: 8.74}
+
+\vspace{8pt}
+
+
+
 \end{document}

@@ -1,130 +1,381 @@
 <div class="shell">
-  <!-- ── Header ──────────────────────────────────── -->
+
+  <!-- ── Topbar ── -->
   <header class="topbar">
     <span class="logo">TexTailor</span>
     <span class="subtitle">AI Resume Automator</span>
-    <button class="btn-ghost"
-            (click)="viewTemplate()"
-            [disabled]="isGenerating"
-            [title]="isGenerating ? 'Wait for generation to finish' : 'Preview your base resume'">
+
+    <nav class="tab-nav">
+      <button class="tab-btn" [class.tab-btn--active]="activeTab === 'generate'"
+              (click)="setTab('generate')">
+        Generator
+      </button>
+      <button class="tab-btn" [class.tab-btn--active]="activeTab === 'edit-resume'"
+              (click)="setTab('edit-resume')">
+        Resume Editor
+      </button>
+    </nav>
+
+    <button class="btn-ghost" (click)="viewTemplate()"
+            *ngIf="activeTab === 'generate'" [disabled]="isGenerating">
       View Template
     </button>
   </header>
 
-  <!-- ── Main Layout ─────────────────────────────── -->
-  <main class="layout">
+  <!-- ══════════════════════════════════════════════════ -->
+  <!--  TAB: Generator                                   -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <main class="layout" *ngIf="activeTab === 'generate'">
 
-    <!-- LEFT: Input + pipeline panel -->
+    <!-- LEFT: JD input + pipeline status + score + report -->
     <section class="panel input-panel">
-      <h2 class="panel-title">Job Description</h2>
-      <textarea
-        class="jd-area"
-        [(ngModel)]="jd"
-        placeholder="Paste the full job description here…"
-        [disabled]="isGenerating">
-      </textarea>
 
-      <button
-        class="btn-primary"
-        (click)="generate()"
-        [disabled]="!jd.trim() || isGenerating">
-        <span *ngIf="!isGenerating">Generate Resume</span>
+      <h2 class="panel-title">Job Description</h2>
+      <textarea class="jd-area" [(ngModel)]="jd"
+                placeholder="Paste the full job description here…"
+                [disabled]="isGenerating"></textarea>
+
+      <button class="btn-primary generate-btn" (click)="generate()"
+              [disabled]="!jd.trim() || isGenerating">
+        <span *ngIf="!isGenerating">Tailor My Resume</span>
         <span *ngIf="isGenerating" class="spinner-label">
           <span class="spinner"></span> Generating…
         </span>
       </button>
 
-      <!-- ── Pipeline stepper — shown as soon as generate() is clicked ── -->
+      <!-- ── Pipeline stepper ── -->
       <div class="stepper" *ngIf="isGenerating || status">
-
-        <!-- Timer + est row -->
         <div class="stepper-meta">
-          <span class="elapsed" *ngIf="isGenerating">
-            ⏱ {{ elapsedLabel }}
-          </span>
-          <span class="est-label" *ngIf="isGenerating">
-            Est. 45 – 90s total
-          </span>
+          <span class="elapsed" *ngIf="isGenerating">⏱ {{ elapsedLabel }}</span>
+          <span class="est-label" *ngIf="isGenerating">Est. 45 – 90s</span>
           <span class="elapsed done-label" *ngIf="!isGenerating && status?.status === 'done'">
-            ✓ Completed in {{ elapsedLabel }}
+            ✓ Done in {{ elapsedLabel }}
           </span>
         </div>
-
-        <!-- Progress bar -->
         <div class="progress-bar-wrap">
           <div class="progress-bar-fill"
                [style.width.%]="progressPct"
-               [class.bar--done]="status?.status === 'done'">
-          </div>
+               [class.bar--done]="status?.status === 'done'"></div>
         </div>
         <p class="progress-label">{{ progressPct }}% complete</p>
 
-        <!-- Steps -->
-        <div class="step"
-             *ngFor="let step of displaySteps; let i = index"
+        <div class="step" *ngFor="let step of displaySteps; let i = index"
              [class.step--done]="step.status === 'done'"
              [class.step--running]="step.status === 'running'"
              [class.step--error]="step.status === 'error'">
-
-          <!-- Icon -->
           <div class="step-icon">
-            <span *ngIf="step.status === 'pending'" class="icon-pending">{{ i + 1 }}</span>
-            <span *ngIf="step.status === 'running'" class="icon-spin">⟳</span>
-            <span *ngIf="step.status === 'done'" class="icon-done">✓</span>
-            <span *ngIf="step.status === 'error'" class="icon-err">✕</span>
+            <span *ngIf="step.status === 'pending'"  class="icon-pending">{{ i + 1 }}</span>
+            <span *ngIf="step.status === 'running'"  class="icon-spin">⟳</span>
+            <span *ngIf="step.status === 'done'"     class="icon-done">✓</span>
+            <span *ngIf="step.status === 'error'"    class="icon-err">✕</span>
           </div>
-
-          <!-- Text -->
           <div class="step-body">
             <div class="step-header">
               <span class="step-name">{{ step.name }}</span>
               <span class="step-elapsed" *ngIf="step.elapsed">{{ step.elapsed }}</span>
-              <span class="step-live" *ngIf="step.status === 'running'">running…</span>
+              <span class="step-live"    *ngIf="step.status === 'running'">running…</span>
             </div>
             <p class="step-detail" *ngIf="step.detail">{{ step.detail }}</p>
           </div>
         </div>
       </div>
 
-      <!-- Score badge -->
+      <!-- ── Score card ── -->
       <div class="score-card" *ngIf="status?.status === 'done'">
-        <span class="score-num" [style.color]="scoreColor">{{ status!.score }}%</span>
-        <span class="score-label">ATS Match — {{ status!.verdict }}</span>
+        <div class="score-ring" [style.color]="scoreColor">
+          <span class="score-num">{{ currentScore }}%</span>
+          <span class="score-label">ATS Match</span>
+        </div>
+        <div class="score-right">
+          <span class="score-verdict" [style.color]="scoreColor">
+            {{ boostScore ? 'Boosted · ' : '' }}{{ reportData?.verdict ?? status!.verdict }}
+          </span>
+          <button class="btn-report-toggle" (click)="toggleReport()" *ngIf="reportData">
+            {{ showReport ? '▲ Hide Report' : '▼ View Full Report' }}
+          </button>
+          <span class="report-loading" *ngIf="!reportData && status?.status === 'done'">
+            Loading report…
+          </span>
+        </div>
+      </div>
+
+      <!-- ── ATS Report panel ── -->
+      <div class="report-panel" *ngIf="showReport && reportData">
+
+        <div class="report-section">
+          <div class="report-section-title">
+            Required Keywords
+            <span class="kw-count">
+              {{ reportData.required_found.length }} / {{ reportData.required_found.length + reportData.required_missing.length }}
+            </span>
+          </div>
+          <div class="kw-cloud">
+            <span *ngFor="let kw of reportData.required_found"  class="kw kw--found">✓ {{ kw }}</span>
+            <span *ngFor="let kw of reportData.required_missing" class="kw kw--missing">✗ {{ kw }}</span>
+          </div>
+        </div>
+
+        <div class="report-section">
+          <div class="report-section-title">
+            Preferred Keywords
+            <span class="kw-count">
+              {{ reportData.preferred_found.length }} / {{ reportData.preferred_found.length + reportData.preferred_missing.length }}
+            </span>
+          </div>
+          <div class="kw-cloud">
+            <span *ngFor="let kw of reportData.preferred_found"  class="kw kw--found">✓ {{ kw }}</span>
+            <span *ngFor="let kw of reportData.preferred_missing" class="kw kw--missing">✗ {{ kw }}</span>
+          </div>
+        </div>
+
+        <div class="report-section" *ngIf="reportData.needs_metric_count > 0">
+          <div class="report-section-title warn-title">
+            ⚠ {{ reportData.needs_metric_count }} bullet(s) need real metrics
+          </div>
+          <p class="report-hint">Search for %NEEDS_METRIC in the tailored .tex and add numbers.</p>
+        </div>
+
+        <!-- Boost banner -->
+        <div class="boost-banner" *ngIf="reportData.overall_score < 90 && !boostScore">
+          <div class="boost-banner-text">
+            <strong>Score is {{ reportData.overall_score }}% — below 90%.</strong>
+            <span>Weave in {{ reportData.required_missing.length + reportData.preferred_missing.length }} missing keywords automatically?</span>
+          </div>
+          <button class="btn-boost" (click)="boostAts()" [disabled]="isBoosting">
+            <span *ngIf="!isBoosting">Boost to 90%+</span>
+            <span *ngIf="isBoosting" class="spinner-label"><span class="spinner"></span> Boosting…</span>
+          </button>
+        </div>
+
+        <div class="boost-done" *ngIf="boostScore">
+          ✓ Boosted to {{ boostScore }}% — new PDF loaded.
+        </div>
       </div>
 
       <!-- Error -->
-      <div class="error-box" *ngIf="status?.status === 'error'">
-        {{ status!.error }}
-      </div>
+      <div class="error-box" *ngIf="status?.status === 'error'">{{ status!.error }}</div>
+
     </section>
 
-    <!-- RIGHT: PDF viewer panel -->
+    <!-- RIGHT: PDF viewer + Chat editor -->
     <section class="panel pdf-panel">
+
       <div class="pdf-header">
         <h2 class="panel-title">
-          <span *ngIf="pdfUrl">Tailored Resume</span>
-          <span *ngIf="showTemplate && !pdfUrl">Template Preview</span>
-          <span *ngIf="!pdfUrl && !showTemplate">Preview</span>
+          <span *ngIf="activePdfUrl">Resume Preview</span>
+          <span *ngIf="showTemplatePdf">Template Preview</span>
+          <span *ngIf="!activePdfUrl && !showTemplatePdf">Preview</span>
         </h2>
-        <button class="btn-download" *ngIf="pdfUrl" (click)="download()">
+        <button class="btn-download" *ngIf="activePdfUrl" (click)="download()">
           ↓ Download PDF
         </button>
       </div>
 
+      <!-- PDF iframe area -->
       <div class="pdf-frame-wrap">
-        <iframe *ngIf="pdfUrl"
-          [src]="pdfUrl" class="pdf-frame" title="Tailored Resume">
-        </iframe>
-        <iframe *ngIf="showTemplate && !pdfUrl"
-          [src]="templateUrl" class="pdf-frame" title="Resume Template">
-        </iframe>
-        <div class="pdf-empty" *ngIf="!pdfUrl && !showTemplate">
+        <iframe *ngIf="activePdfUrl"    [src]="activePdfUrl"  class="pdf-frame" title="Resume Preview"></iframe>
+        <iframe *ngIf="showTemplatePdf" [src]="templateUrl"   class="pdf-frame" title="Template Preview"></iframe>
+
+        <div class="pdf-empty" *ngIf="!activePdfUrl && !showTemplatePdf">
           <div class="empty-icon">📄</div>
-          <p>Your tailored resume will appear here after generation.</p>
-          <p class="empty-hint">Or click <strong>View Template</strong> to preview your base resume.</p>
+          <p>Your tailored resume will appear here.</p>
+          <p class="empty-hint">Paste a job description and click <strong>Tailor My Resume</strong>.</p>
+          <p class="empty-hint" *ngIf="!isGenerating">Or click <strong>View Template</strong> above to preview your base resume.</p>
+        </div>
+
+        <!-- Generating overlay -->
+        <div class="pdf-generating-overlay" *ngIf="isGenerating && !activePdfUrl">
+          <div class="gen-overlay-inner">
+            <div class="gen-spinner"></div>
+            <p class="gen-label">AI is tailoring your resume…</p>
+            <p class="gen-sub">Reading your LaTeX → analysing JD → rewriting sections → compiling PDF</p>
+            <p class="gen-time">This usually takes 45–90 seconds</p>
+          </div>
         </div>
       </div>
+
+      <!-- ── Chat editor ── -->
+      <div class="chat-panel" *ngIf="activePdfUrl">
+        <div class="chat-header">
+          <span class="chat-title">Edit via Chat</span>
+          <button class="btn-undo-chat" (click)="undoChat()"
+                  [disabled]="chatState !== 'idle'" title="Undo last chat change">
+            ↩ Undo
+          </button>
+        </div>
+
+        <div class="chat-messages" #chatScroll>
+          <div *ngIf="chatMessages.length === 0" class="chat-hint">
+            Tell me what to change — e.g. "make it 2 pages", "remove SCQA project", "increase font size"
+          </div>
+
+          <div *ngFor="let msg of chatMessages" class="chat-msg"
+               [class.chat-msg--user]="msg.role === 'user'"
+               [class.chat-msg--plan]="msg.role === 'plan'"
+               [class.chat-msg--bot]="msg.role === 'bot'"
+               [class.chat-msg--error]="msg.role === 'error'">
+            <div class="chat-bubble">
+              <div *ngIf="msg.role === 'plan'" class="plan-label">Here's the plan</div>
+              <p class="chat-text">{{ msg.text }}</p>
+              <ul *ngIf="msg.role === 'plan' && msg.changesPreview?.length" class="changes-list">
+                <li *ngFor="let c of msg.changesPreview">{{ c }}</li>
+              </ul>
+              <div *ngIf="msg.role === 'plan' && chatState === 'awaiting_confirmation'" class="confirm-row">
+                <button class="btn-confirm" (click)="confirmPlan()">Yes, apply changes</button>
+                <button class="btn-cancel-plan" (click)="cancelPlan()">No, cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <div *ngIf="isChatBusy" class="chat-msg chat-msg--bot">
+            <div class="chat-bubble chat-bubble--loading">
+              <span class="spinner"></span>
+              {{ chatState === 'planning' ? 'Analysing your request…' : 'Applying changes and compiling…' }}
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-row">
+          <input class="chat-input" [(ngModel)]="chatInput"
+                 (keydown.enter)="sendChat()"
+                 placeholder="Describe the change you want…"
+                 [disabled]="chatState !== 'idle'">
+          <button class="btn-send" (click)="sendChat()"
+                  [disabled]="!chatInput.trim() || chatState !== 'idle'">Send</button>
+        </div>
+      </div>
+
+      <!-- Chat prompt when no PDF yet -->
+      <div class="chat-unavailable" *ngIf="!activePdfUrl && !isGenerating && !showTemplatePdf">
+        <span>Chat editor and Boost appear here after generating a resume.</span>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- ══════════════════════════════════════════════════ -->
+  <!--  TAB: Resume Editor                               -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <main class="layout editor-layout" *ngIf="activeTab === 'edit-resume'">
+
+    <!-- Markdown textarea -->
+    <section class="panel md-panel">
+      <div class="md-panel-header">
+        <h2 class="panel-title">Resume Content</h2>
+        <span class="unsaved-badge" *ngIf="mdDirty && editorState === 'editing'">● Unsaved changes</span>
+        <span class="saved-badge"   *ngIf="!mdDirty && editorState === 'editing'">✓ Saved</span>
+      </div>
+
+      <!-- Loading skeleton -->
+      <div *ngIf="editorState === 'loading'" class="md-loading-block">
+        <div class="md-loading-icon">
+          <span class="spinner md-spinner"></span>
+        </div>
+        <p class="md-loading-title">Loading resume content…</p>
+        <p class="md-loading-sub">
+          First time: Claude is converting your LaTeX to Markdown (~30–60 s).
+          Subsequent opens are instant.
+        </p>
+        <div class="md-skeleton">
+          <div class="sk-line sk-line--title"></div>
+          <div class="sk-line"></div>
+          <div class="sk-line sk-line--short"></div>
+          <div class="sk-line"></div>
+          <div class="sk-line sk-line--medium"></div>
+          <div class="sk-line sk-line--short"></div>
+        </div>
+      </div>
+
+      <textarea *ngIf="editorState !== 'loading' && editorState !== 'error'"
+                class="md-textarea"
+                [(ngModel)]="mdContent"
+                spellcheck="false"
+                placeholder="Resume content will load here…"></textarea>
+
+      <div class="error-box" *ngIf="editorState === 'error'">{{ editorError }}</div>
+    </section>
+
+    <!-- Actions sidebar -->
+    <section class="panel editor-actions-panel">
+      <h2 class="panel-title">Resume Editor</h2>
+
+      <!-- Editing state -->
+      <div *ngIf="editorState === 'editing' || editorState === 'error'" class="action-block">
+        <p class="action-hint">
+          Edit the Markdown on the left. Use headings, bullets, and <code>**Tech:**</code> lines.
+          Save your draft, then sync it to rebuild the LaTeX resume.
+        </p>
+
+        <button class="btn-primary action-btn" (click)="saveMd()" [disabled]="!mdDirty">
+          Save Draft
+        </button>
+        <p class="action-hint-small" *ngIf="!mdDirty && editorState === 'editing'">
+          Make edits above to enable save.
+        </p>
+
+        <button class="btn-secondary action-btn" (click)="discardMd()" [disabled]="!mdDirty">
+          Discard Changes
+        </button>
+      </div>
+
+      <!-- Loading state -->
+      <div *ngIf="editorState === 'loading'" class="action-block">
+        <p class="action-hint">Generating Markdown from your LaTeX resume…</p>
+        <div class="action-skeleton">
+          <div class="sk-btn"></div>
+          <div class="sk-btn sk-btn--secondary"></div>
+        </div>
+      </div>
+
+      <!-- Saving -->
+      <div *ngIf="editorState === 'saving'" class="action-block">
+        <div class="status-msg"><span class="spinner"></span> Saving draft…</div>
+      </div>
+
+      <!-- Saved — awaiting sync -->
+      <div *ngIf="editorState === 'saved'" class="action-block">
+        <div class="status-msg status-msg--ok">✓ Draft saved to resume-content.md</div>
+        <p class="action-hint">
+          Sync will convert your Markdown to LaTeX and recompile the resume template.
+          This takes ~60 s.
+        </p>
+        <button class="btn-primary action-btn" (click)="syncMd()">
+          Sync with Resume Template
+        </button>
+        <button class="btn-secondary action-btn" (click)="discardMd()">
+          Keep Editing
+        </button>
+      </div>
+
+      <!-- Syncing -->
+      <div *ngIf="editorState === 'syncing'" class="action-block">
+        <div class="status-msg"><span class="spinner"></span> Converting to LaTeX…</div>
+        <p class="action-hint">Claude is regenerating the LaTeX body. This takes ~60 s.</p>
+        <div class="sync-steps">
+          <div class="sync-step">1. Convert Markdown → LaTeX body</div>
+          <div class="sync-step">2. Stitch original preamble + macros back in</div>
+          <div class="sync-step">3. Compile PDF with pdflatex</div>
+        </div>
+      </div>
+
+      <!-- Synced -->
+      <div *ngIf="editorState === 'synced'" class="action-block">
+        <div class="status-msg status-msg--ok">✓ Resume template updated!</div>
+        <button class="btn-download action-btn" (click)="downloadEditor()" *ngIf="editorPdfUrl">
+          ↓ Download Updated PDF
+        </button>
+        <iframe *ngIf="editorPdfUrl" [src]="editorPdfUrl"
+                class="editor-pdf-preview" title="Updated Resume"></iframe>
+        <button class="btn-secondary action-btn" (click)="setTab('generate')">
+          Back to Generator
+        </button>
+        <button class="btn-secondary action-btn" (click)="discardMd()">
+          Keep Editing
+        </button>
+      </div>
+
     </section>
 
   </main>
+
 </div>

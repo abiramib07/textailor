@@ -11,6 +11,7 @@ from watchdog.observers import Observer
 sys.path.insert(0, str(Path(__file__).parent))
 
 from agents.ats_scorer import score, write_report
+from agents.editor import apply_pending_edits
 from agents.recruiter import analyze
 from agents.rewriter import rewrite
 from compiler import compile_tex
@@ -28,6 +29,9 @@ def run_pipeline(jd_text: str, config: dict) -> None:
     print("\n" + "=" * 60)
     print(f"TexTailor pipeline started — {datetime.now().strftime('%H:%M:%S')}")
     print("=" * 60)
+
+    # ── Step 0: Apply any pending resume edits ────────────────────
+    apply_pending_edits(config)
 
     # ── Step 1: Parse master resume ──────────────────────────────
     print("\n[1/5] Parsing resume...")

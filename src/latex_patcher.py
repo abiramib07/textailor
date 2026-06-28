@@ -19,12 +19,11 @@ def patch(
         if name not in original_sections:
             continue
 
-        # Use fallback pattern directly — safer than escaping LaTeX bodies
-        # Matches \header{Name} + everything up to next \header or \end{document}
+        # Match \section{Name} or \section*{Name} + body up to next section / end
         header_pattern = (
-            r"(\\header\{" + re.escape(name) + r"\})"
+            r"(\\section\*?\{" + re.escape(name) + r"\})"
             r"(.*?)"
-            r"(?=\\header\{|\\end\{document\})"
+            r"(?=\\section\*?\{|\\end\{document\})"
         )
         _new = new_content.strip()
         updated = re.sub(

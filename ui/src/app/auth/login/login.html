@@ -1,0 +1,53 @@
+<div class="auth-page">
+  <div class="auth-card" *ngIf="!forgotMode">
+    <h1 class="auth-title">Welcome back</h1>
+    <p class="auth-subtitle">Log in with your PIN or Google account</p>
+
+    <div class="auth-error" *ngIf="error">{{ error }}</div>
+
+    <label class="auth-field">
+      <label>Mobile number or email</label>
+      <input type="text" [(ngModel)]="identifier" placeholder="+91XXXXXXXXXX or you@example.com" autocomplete="username" />
+    </label>
+
+    <label class="auth-field auth-pin-input">
+      <label>4-digit PIN</label>
+      <input type="password" [(ngModel)]="pin" maxlength="4" inputmode="numeric" placeholder="••••" autocomplete="current-password" (keyup.enter)="submit()" />
+    </label>
+
+    <button class="auth-btn auth-btn-primary" [disabled]="loading" (click)="submit()">
+      {{ loading ? 'Logging in…' : 'Log in with PIN' }}
+    </button>
+
+    <div class="auth-divider">OR</div>
+
+    <button class="auth-btn auth-btn-google" (click)="continueWithGoogle()">
+      Continue with Google
+    </button>
+
+    <div class="auth-links">
+      <a (click)="toggleForgot()">Forgot PIN?</a>
+      <a routerLink="/signup">New here? Create an account</a>
+    </div>
+  </div>
+
+  <div class="auth-card" *ngIf="forgotMode">
+    <h1 class="auth-title">Reset your PIN</h1>
+    <p class="auth-subtitle">We'll send a verification code to your mobile number</p>
+
+    <div class="auth-error" *ngIf="forgotError">{{ forgotError }}</div>
+
+    <label class="auth-field">
+      <label>Mobile number</label>
+      <input type="text" [(ngModel)]="forgotMobile" placeholder="+91XXXXXXXXXX" (keyup.enter)="sendResetOtp()" />
+    </label>
+
+    <button class="auth-btn auth-btn-primary" [disabled]="forgotLoading" (click)="sendResetOtp()">
+      {{ forgotLoading ? 'Sending…' : 'Send code' }}
+    </button>
+
+    <div class="auth-links">
+      <a (click)="toggleForgot()">Back to login</a>
+    </div>
+  </div>
+</div>

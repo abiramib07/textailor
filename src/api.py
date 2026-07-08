@@ -20,6 +20,8 @@ from agents.chat_editor import plan as chat_plan
 from agents.chat_editor import undo as chat_undo
 from agents.recruiter import analyze
 from agents.rewriter import rewrite
+from auth.db import init_db as init_auth_db
+from auth.router import router as auth_router
 from compiler import compile_tex
 from latex_parser import parse_resume, strip_latex
 from latex_patcher import patch as patch_tex, write_tailored_tex
@@ -34,10 +36,13 @@ app = FastAPI(title="TexTailor API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200"],
+    allow_origins=["http://localhost:4200", "http://127.0.0.1:4200"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,  # required so the auth cookies are sent on cross-origin XHR
 )
+
+app.include_router(auth_router)
 
 # task_id -> task state
 _tasks: dict = {}
@@ -173,6 +178,7 @@ class GenerateRequest(BaseModel):
 
 @app.on_event("startup")
 def _startup():
+    init_auth_db()
     log.info("TexTailor API ready on http://localhost:8000")
     log.info("Docs → http://localhost:8000/docs")
 

@@ -1,0 +1,63 @@
+import re
+
+from pydantic import BaseModel, EmailStr, field_validator
+
+_MOBILE_RE = re.compile(r"^\+?[1-9]\d{7,14}$")  # E.164-ish, 8-15 digits
+
+
+class SignupRequest(BaseModel):
+    name: str
+    mobile_number: str
+    email: EmailStr
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Name is required")
+        return v
+
+    @field_validator("mobile_number")
+    @classmethod
+    def mobile_valid(cls, v: str) -> str:
+        v = v.strip()
+        if not _MOBILE_RE.match(v):
+            raise ValueError("Enter a valid mobile number, e.g. +919876543210")
+        return v
+
+
+class OtpSendRequest(BaseModel):
+    mobile_number: str
+    purpose: str  # "signup" | "reset"
+
+
+class OtpVerifyRequest(BaseModel):
+    mobile_number: str
+    otp: str
+    purpose: str
+
+
+class PinSetRequest(BaseModel):
+    otp_verified_token: str
+    pin: str
+
+    @field_validator("pin")
+    @classmethod
+    def pin_is_4_digits(cls, v: str) -> str:
+        if not re.match(r"^\d{4}$", v):
+            raise ValueError("PIN must be exactly 4 digits")
+        return v
+
+
+class PinLoginRequest(BaseModel):
+    identifier: str  # mobile number or email
+    pin: str
+
+
+class RefreshRequest(BaseModel):
+    pass
+
+
+class CompleteMobileRequest(BaseModel):
+    otp_verified_token: str

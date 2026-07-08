@@ -1,0 +1,22 @@
+<div class="auth-page">
+  <div class="auth-card">
+    <h1 class="auth-title">{{ isReset ? 'Set a new PIN' : 'Create your PIN' }}</h1>
+    <p class="auth-subtitle">You'll use this 4-digit PIN to log in from now on</p>
+
+    <div class="auth-error" *ngIf="error">{{ error }}</div>
+
+    <label class="auth-field auth-pin-input">
+      <label>New PIN</label>
+      <input type="password" [(ngModel)]="pin" maxlength="4" inputmode="numeric" placeholder="••••" />
+    </label>
+
+    <label class="auth-field auth-pin-input">
+      <label>Confirm PIN</label>
+      <input type="password" [(ngModel)]="confirmPin" maxlength="4" inputmode="numeric" placeholder="••••" (keyup.enter)="submit()" />
+    </label>
+
+    <button class="auth-btn auth-btn-primary" [disabled]="!valid || loading" (click)="submit()">
+      {{ loading ? 'Saving…' : 'Save PIN & continue' }}
+    </button>
+  </div>
+</div>

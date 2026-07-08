@@ -1,0 +1,21 @@
+<div class="auth-page">
+  <div class="auth-card">
+    <h1 class="auth-title">One more thing</h1>
+    <p class="auth-subtitle">Add your mobile number to finish setting up your account</p>
+
+    <div class="auth-error" *ngIf="error">{{ error }}</div>
+
+    <label class="auth-field">
+      <label>Mobile number</label>
+      <input type="text" [(ngModel)]="mobile_number" placeholder="+91XXXXXXXXXX" (keyup.enter)="submit()" />
+    </label>
+
+    <button class="auth-btn auth-btn-primary" [disabled]="!mobile_number.trim() || loading" (click)="submit()">
+      {{ loading ? 'Sending code…' : 'Send verification code' }}
+    </button>
+
+    <div class="auth-links">
+      <a (click)="skip()">Skip for now</a>
+    </div>
+  </div>
+</div>

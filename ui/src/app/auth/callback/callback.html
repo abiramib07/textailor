@@ -1,0 +1,16 @@
+<div class="auth-page">
+  <div class="auth-card">
+    <ng-container *ngIf="loading">
+      <h1 class="auth-title">Signing you in…</h1>
+      <p class="auth-subtitle">Hang tight, this only takes a second.</p>
+    </ng-container>
+
+    <ng-container *ngIf="!loading && error">
+      <h1 class="auth-title">Something went wrong</h1>
+      <div class="auth-error">{{ error }}</div>
+      <div class="auth-links">
+        <a routerLink="/login">Back to login</a>
+      </div>
+    </ng-container>
+  </div>
+</div>

@@ -1,2 +1,14 @@
 watchdog==4.0.0
 plyer==2.1.0
+
+# API server
+fastapi>=0.115
+uvicorn[standard]>=0.34
+
+# Auth module (src/auth)
+pyjwt>=2.10
+bcrypt>=4.2
+httpx>=0.28
+python-dotenv>=1.0
+pydantic[email]>=2.10
+# twilio  # optional — uncomment to enable AUTH_SMS_PROVIDER=twilio

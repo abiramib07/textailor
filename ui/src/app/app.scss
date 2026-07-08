@@ -51,6 +51,25 @@
     &:hover:not(:disabled) { border-color: #818cf8; color: #818cf8; }
     &:disabled { opacity: 0.35; cursor: not-allowed; }
   }
+
+  .auth-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 4px;
+
+    .auth-indicator-name {
+      font-size: 12px;
+      color: #94a3b8;
+      white-space: nowrap;
+    }
+
+    .auth-indicator-login {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+  }
 }
 
 /* ── Tab nav ── */

@@ -27,3 +27,6 @@ Thumbs.db
 
 # Secrets (if ever added)
 .env
+
+# Auth module SQLite DB — local dev data, never tracked
+src/auth/data/

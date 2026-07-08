@@ -1,8 +1,10 @@
-import { Component, OnDestroy, ChangeDetectorRef, ViewChild, ElementRef } from '@angular/core';
+import { Component, OnDestroy, OnInit, ChangeDetectorRef, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ResumeService, TaskStatus, PipelineStep, ScoreReport } from './resume.service';
+import { AuthService, UserProfile } from './auth/auth.service';
 
 const STEP_NAMES = [
   'Parse resume',
@@ -29,11 +31,15 @@ type EditorState = 'idle' | 'loading' | 'editing' | 'saving' | 'saved' | 'syncin
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './app.html',
   styleUrl: './app.scss'
 })
-export class App implements OnDestroy {
+export class App implements OnInit, OnDestroy {
+
+  // ── Auth (session, if any) ──────────────────────────────────────
+  authUser: UserProfile | null = null;
+  authChecked = false;
 
   // ── Tabs ────────────────────────────────────────────────────────
   activeTab: Tab = 'generate';
@@ -84,9 +90,34 @@ export class App implements OnDestroy {
   constructor(
     private svc: ResumeService,
     private sanitizer: DomSanitizer,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private authSvc: AuthService
   ) {
     this.templateUrl = sanitizer.bypassSecurityTrustResourceUrl(svc.templateUrl());
+  }
+
+  ngOnInit() {
+    // Not being logged in is a normal state here (unlike /welcome) — the
+    // resume tool works with or without a session, so no redirect on 401.
+    this.authSvc.me().subscribe({
+      next: ({ user }) => {
+        this.authUser = user;
+        this.authChecked = true;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.authUser = null;
+        this.authChecked = true;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  logout() {
+    this.authSvc.logout().subscribe(() => {
+      this.authUser = null;
+      this.cdr.detectChanges();
+    });
   }
 
   ngOnDestroy() {
@@ -152,10 +183,7 @@ export class App implements OnDestroy {
   download() {
     const url = this.boostPdfRawUrl ?? this.chatPdfRawUrl ?? this.pdfRawUrl;
     if (!url) return;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'resume.pdf';
-    a.click();
+    this._blobDownload(url, 'resume_tailored.pdf');
   }
 
   get displaySteps(): PipelineStep[] {
@@ -423,10 +451,22 @@ export class App implements OnDestroy {
 
   downloadEditor() {
     if (!this.editorPdfRawUrl) return;
-    const a = document.createElement('a');
-    a.href = this.editorPdfRawUrl;
-    a.download = 'resume-updated.pdf';
-    a.click();
+    this._blobDownload(this.editorPdfRawUrl, 'resume_updated.pdf');
+  }
+
+  private _blobDownload(url: string, filename: string) {
+    fetch(url)
+      .then(r => r.blob())
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      });
   }
 
   // ── Polling ─────────────────────────────────────────────────────

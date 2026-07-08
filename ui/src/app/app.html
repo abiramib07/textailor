@@ -20,6 +20,16 @@
             *ngIf="activeTab === 'generate'" [disabled]="isGenerating">
       View Template
     </button>
+
+    <div class="auth-indicator" *ngIf="authChecked">
+      <ng-container *ngIf="authUser; else loggedOut">
+        <span class="auth-indicator-name">{{ authUser.name }}</span>
+        <button class="btn-ghost" (click)="logout()">Log out</button>
+      </ng-container>
+      <ng-template #loggedOut>
+        <a class="btn-ghost auth-indicator-login" routerLink="/login">Log in</a>
+      </ng-template>
+    </div>
   </header>
 
   <!-- ══════════════════════════════════════════════════ -->

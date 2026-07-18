@@ -103,3 +103,20 @@ actually start the server and hit the affected endpoint (curl or the
 
 For frontend changes: run lint/build above, then drive the actual UI in a
 browser for anything touching a template — see the `verify` skill.
+
+## Git hygiene
+
+Before every `git add` / commit / push, check `git status` for anything
+that looks like a scratch note rather than a real project file — dated
+worklog dumps, session-continuation notes, one-off TODO lists, throwaway
+prototype files. These are useful locally but don't belong in the repo.
+`_md/`, `session-history/`, and known one-off names (`TODO.md`,
+`CONTINUE_HERE.md`, `worklog-update.md`, `issue-log.md`,
+`email_generator_tab.html`) are already gitignored — if a new file in
+that spirit shows up, add it to `.gitignore` rather than committing it.
+Real docs (`ARCHITECTURE.md`, `AGENTS.md`, `STARTUP.md`, `UI_SETUP.md`,
+`design_plan.md`, etc.) are not affected by this — only throwaway notes.
+
+**Commit messages are one short line** — what changed, not a narrative.
+No multi-paragraph bodies, no restating the diff. E.g. `Fix ATS score
+rounding in ats_scorer.py`, not a story about why or how.

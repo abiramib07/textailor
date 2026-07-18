@@ -39,3 +39,14 @@ src/career/data/
 src/resumes/data/
 resume/*/
 inputs/backups/
+
+# Session/worklog scratch notes — useful locally, not real project docs.
+# Kept on disk, just not pushed. See CLAUDE.md "Git hygiene" for the rule.
+_md/
+session-history/
+/2026-06-25.md
+/CONTINUE_HERE.md
+/TODO.md
+/worklog-update.md
+/issue-log.md
+/email_generator_tab.html

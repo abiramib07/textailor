@@ -117,6 +117,16 @@ that spirit shows up, add it to `.gitignore` rather than committing it.
 Real docs (`ARCHITECTURE.md`, `AGENTS.md`, `STARTUP.md`, `UI_SETUP.md`,
 `design_plan.md`, etc.) are not affected by this — only throwaway notes.
 
+**`WORKLOG.md` and `docs/design-plans/` are the opposite of the above —
+canonical, intentional, and always tracked.** They replace the ad-hoc
+worklog/session-note pattern that got gitignored; don't recreate that
+pattern elsewhere.
+- End of a work session → append a short bullet entry to the top of
+  `WORKLOG.md` (what got done, not a narrative).
+- End of a design discussion (a "discuss before implementing" conversation)
+  → write the agreed design to `docs/design-plans/<date>-<slug>.md` and add
+  a row to `docs/design-plans/INDEX.md`.
+
 **Commit messages are one short line** — what changed, not a narrative.
 No multi-paragraph bodies, no restating the diff. E.g. `Fix ATS score
 rounding in ats_scorer.py`, not a story about why or how.

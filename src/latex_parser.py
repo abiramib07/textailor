@@ -1,20 +1,27 @@
-import re
+"""Parses the master LaTeX resume into its preamble, profile block, and
+per-section content, plus a plain-text rendering for Claude prompts.
+"""
+
 import json
+import re
 from pathlib import Path
 
 
 def _load_config() -> dict:
+    """Load config.json from the project root."""
     config_path = Path(__file__).parent.parent / "config.json"
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         return json.load(f)
 
 
 def _read_tex(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
+    """Read a .tex file as UTF-8 text."""
+    with open(path, encoding="utf-8") as f:
         return f.read()
 
 
 def extract_preamble(tex: str) -> str:
+    """Return everything from \\documentclass through \\begin{document}."""
     match = re.search(r"(\\documentclass.*?\\begin\{document\})", tex, re.DOTALL)
     return match.group(1) if match else ""
 
@@ -73,7 +80,7 @@ def strip_latex(text: str) -> str:
     return text.strip()
 
 
-def parse_resume(resume_path: str = None) -> dict:
+def parse_resume(resume_path: str | None = None) -> dict:
     """
     Parse the master LaTeX resume.
 

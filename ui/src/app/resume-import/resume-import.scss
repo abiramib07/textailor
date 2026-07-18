@@ -1,0 +1,464 @@
+:host {
+  display: block;
+  height: 100%;
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.ri-shell {
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.ri-panel {
+  background: #11141c;
+  border: 1px solid #1c202c;
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.ri-panel-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #5c6070;
+  font-weight: 700;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.ri-hint {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #9296a6;
+  margin-bottom: 14px;
+}
+
+/* ── Upload stage ── */
+.ri-upload-panel {
+  max-width: 460px;
+  margin: 24px auto;
+}
+
+.ri-field {
+  display: block;
+  margin-bottom: 14px;
+
+  label {
+    display: block;
+    font-size: 11.5px;
+    color: #9296a6;
+    margin-bottom: 5px;
+  }
+}
+
+.ri-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #151926;
+  border: 1px solid #242938;
+  border-radius: 7px;
+  padding: 9px 11px;
+  color: #e8e9ee;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+
+  &:focus { border-color: #6366f1; }
+  &::placeholder { color: #5c6070; }
+  &:disabled { opacity: 0.5; }
+}
+
+.ri-file-input {
+  width: 100%;
+  color: #9296a6;
+  font-size: 12.5px;
+}
+
+.ri-error {
+  margin-bottom: 14px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.ri-primary-btn {
+  width: 100%;
+  padding: 11px;
+  border-radius: 8px;
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover:not(:disabled) { background: #5457d8; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.ri-ghost-btn {
+  background: none;
+  border: 1px solid #242938;
+  border-radius: 7px;
+  color: #9296a6;
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-family: inherit;
+
+  &:hover { border-color: #5c6070; color: #e8e9ee; }
+}
+
+.ri-spinner-label { display: flex; align-items: center; gap: 8px; }
+
+.ri-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ri-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes ri-spin { to { transform: rotate(360deg); } }
+
+/* ── "or curate an existing resume" ── */
+.ri-divider {
+  max-width: 460px;
+  margin: 20px auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #5c6070;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #242938;
+  }
+}
+
+.ri-existing-panel {
+  max-width: 460px;
+  margin: 0 auto;
+}
+
+.ri-existing-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ri-existing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #151926;
+  border: 1px solid #242938;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.ri-existing-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.ri-existing-label {
+  font-size: 13px;
+  color: #e8e9ee;
+  font-weight: 600;
+}
+
+.ri-existing-owner {
+  font-size: 11.5px;
+  color: #9296a6;
+}
+
+.ri-existing-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6366f1;
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* ── Curating stage ── */
+.ri-curate-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+  align-items: start;
+}
+
+.ri-curate-left {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ri-curate-right {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.ri-curate-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ri-chatpanel {
+  background: #151926;
+  border: 1px solid #1c202c;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.ri-chathead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: #9296a6;
+  margin-bottom: 10px;
+}
+
+.ri-undo-btn {
+  font-size: 12px;
+  color: #9296a6;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+
+  &:hover:not(:disabled) { color: #e8e9ee; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+}
+
+.ri-chatlog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.ri-chat-hint {
+  font-size: 12px;
+  color: #5c6070;
+  line-height: 1.6;
+  padding: 4px 2px;
+}
+
+.ri-msg {
+  display: flex;
+
+  &.ri-msg--user { justify-content: flex-end; }
+}
+
+.ri-bubble {
+  max-width: 88%;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: #1a1d27;
+  color: #9296a6;
+  border: 1px solid #242938;
+}
+
+.ri-msg--user .ri-bubble {
+  background: rgba(99, 102, 241, 0.12);
+  color: #e8e9ee;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.ri-msg--error .ri-bubble {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.ri-bubble-text { white-space: pre-wrap; margin: 0; }
+
+.ri-plan-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6366f1;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.ri-changes-list {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #9296a6;
+
+  li { margin-bottom: 3px; }
+}
+
+.ri-confirm-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ri-confirm-btn {
+  background: #22c55e;
+  color: #06331f;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+
+  &:hover { background: #16a34a; }
+}
+
+.ri-cancel-btn {
+  background: none;
+  border: 1px solid #242938;
+  color: #9296a6;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+
+  &:hover { border-color: #5c6070; color: #e8e9ee; }
+}
+
+.ri-bubble--loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ri-chatinput-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.ri-chat-textarea {
+  flex: 1;
+  background: #1a1d27;
+  border: 1px solid #242938;
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #e8e9ee;
+  font-size: 12.5px;
+  line-height: 1.55;
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+  max-height: 200px;
+
+  &:focus { border-color: #6366f1; }
+  &::placeholder { color: #5c6070; }
+  &:disabled { opacity: 0.5; }
+}
+
+.ri-send-btn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:hover:not(:disabled) { background: #5457d8; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+/* ── Save block ── */
+.ri-save-block {
+  background: #151926;
+  border: 1px solid #1c202c;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.ri-status-ok {
+  color: #4ade80;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+/* ── PDF preview ── */
+.ri-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.ri-pdf-frame-wrap {
+  flex: 1;
+  background: #0a0d18;
+  border: 1px solid #1c202c;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  min-height: 400px;
+}
+
+.ri-pdf-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
+}
+
+.ri-pdf-empty {
+  margin: auto;
+  text-align: center;
+  color: #5c6070;
+  font-size: 12.5px;
+  padding: 24px;
+}
+
+.ri-pdf-empty-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 900px) {
+  .ri-curate-grid {
+    grid-template-columns: 1fr;
+  }
+}

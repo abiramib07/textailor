@@ -1,0 +1,66 @@
+<div class="tm-page">
+  <div class="tm-card">
+    <h2 class="tm-title">Topic Mapping</h2>
+    <p class="tm-hint">
+      Auto-built from every job description you've pasted — what technologies and skills
+      companies keep asking for, so you know what to sharpen next.
+    </p>
+
+    <div class="tm-buckets">
+      <button
+        type="button"
+        class="tm-bucket-btn"
+        [class.tm-bucket-btn--active]="selectedBucket === ''"
+        (click)="selectBucket('')"
+      >
+        All experience levels
+      </button>
+      @for (b of buckets; track b) {
+        <button
+          type="button"
+          class="tm-bucket-btn"
+          [class.tm-bucket-btn--active]="selectedBucket === b"
+          (click)="selectBucket(b)"
+        >
+          {{ b === 'unspecified' ? 'Not specified' : b + ' years' }}
+        </button>
+      }
+    </div>
+
+    @if (loading) {
+      <p class="tm-hint">Loading…</p>
+    }
+    @if (!loading && entries.length === 0) {
+      <p class="tm-hint">
+        No data yet — this fills in automatically every time you tailor a resume against a job
+        description.
+      </p>
+    }
+
+    @if (!loading && requiredEntries.length) {
+      <div class="tm-section-title">Required, most-requested first</div>
+      @for (e of requiredEntries; track e.keyword + e.years_bucket) {
+        <div class="tm-row">
+          <span class="tm-keyword">{{ e.keyword }}</span>
+          <div class="tm-bar-track">
+            <div class="tm-bar-fill tm-bar-fill--required" [style.width.%]="barWidth(e.frequency)"></div>
+          </div>
+          <span class="tm-count">{{ e.frequency }}</span>
+        </div>
+      }
+    }
+
+    @if (!loading && preferredEntries.length) {
+      <div class="tm-section-title">Preferred</div>
+      @for (e of preferredEntries; track e.keyword + e.years_bucket) {
+        <div class="tm-row">
+          <span class="tm-keyword">{{ e.keyword }}</span>
+          <div class="tm-bar-track">
+            <div class="tm-bar-fill tm-bar-fill--preferred" [style.width.%]="barWidth(e.frequency)"></div>
+          </div>
+          <span class="tm-count">{{ e.frequency }}</span>
+        </div>
+      }
+    }
+  </div>
+</div>

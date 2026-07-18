@@ -1,0 +1,82 @@
+<div class="pa-page">
+  <div class="pa-card">
+    <div class="pa-header">
+      <h2 class="pa-title">LinkedIn Post Archive</h2>
+      <button type="button" class="pa-toggle-btn" (click)="toggleAddForm()">
+        {{ showAddForm ? 'Cancel' : '+ Archive a post' }}
+      </button>
+    </div>
+    <p class="pa-hint">
+      Save the post URL (and a screenshot, since companies delete these) so you can find it again
+      even after it's gone.
+    </p>
+
+    @if (showAddForm) {
+      <div class="pa-add-form">
+        <input type="text" placeholder="Post / job URL" [(ngModel)]="newUrl" />
+        <div class="pa-add-row2">
+          <input type="text" placeholder="Company" [(ngModel)]="newCompany" />
+          <input type="text" placeholder="Role title" [(ngModel)]="newRole" />
+        </div>
+        <textarea placeholder="Paste the post text (optional)" [(ngModel)]="newText" rows="4"></textarea>
+        <button
+          type="button"
+          class="pa-save-btn"
+          [disabled]="(!newUrl.trim() && !newText.trim()) || adding"
+          (click)="addPost()"
+        >
+          {{ adding ? 'Saving…' : 'Save Post' }}
+        </button>
+      </div>
+    }
+
+    @if (loading) {
+      <p class="pa-hint">Loading…</p>
+    }
+    @if (!loading && posts.length === 0) {
+      <p class="pa-hint">No posts archived yet.</p>
+    }
+
+    @for (p of posts; track p.id) {
+      <div class="pa-post-card">
+        <div class="pa-post-head">
+          <div>
+            <div class="pa-post-company">{{ p.company_name || 'Untitled' }}</div>
+            @if (p.role_title) {
+              <div class="pa-post-role">{{ p.role_title }}</div>
+            }
+          </div>
+          <button type="button" class="pa-remove-btn" (click)="removePost(p)">✕</button>
+        </div>
+
+        @if (p.url) {
+          <a [href]="p.url" target="_blank" rel="noopener" class="pa-post-url">{{ p.url }}</a>
+        }
+        @if (p.raw_text) {
+          <p class="pa-post-text">{{ p.raw_text }}</p>
+        }
+
+        @if (attachmentsByPost[p.id].length) {
+          <div class="pa-attachments">
+            @for (a of attachmentsByPost[p.id]; track a.id) {
+              <div class="pa-thumb-wrap">
+                <img [src]="attachmentUrl(p.id, a.id)" class="pa-thumb" alt="Archived screenshot" />
+                <button
+                  type="button"
+                  class="pa-thumb-remove"
+                  (click)="removeAttachment(p.id, a.id)"
+                >
+                  ✕
+                </button>
+              </div>
+            }
+          </div>
+        }
+
+        <div class="pa-paste-zone" tabindex="0" (paste)="onPaste($event, p.id)">
+          {{ pasteStatus[p.id] || 'Click here, then Ctrl+V to paste a screenshot' }}
+        </div>
+      </div>
+    }
+  </div>
+</div>

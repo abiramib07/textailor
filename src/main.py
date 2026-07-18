@@ -1,11 +1,19 @@
+"""CLI entry point: watches `jd_input_path` for a pasted job description and
+runs the full tailoring pipeline (parse -> recruiter -> rewrite -> compile ->
+score) each time it changes. The FastAPI server (`api.py`) exposes the same
+pipeline over HTTP instead of file-watching; this module is the standalone
+watcher variant.
+"""
+
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -20,12 +28,16 @@ from latex_patcher import write_tailored_tex
 
 
 def load_config() -> dict:
+    """Load `config.json` from the project root."""
     config_path = Path(__file__).parent.parent / "config.json"
     with open(config_path, encoding="utf-8") as f:
         return json.load(f)
 
 
 def run_pipeline(jd_text: str, config: dict) -> None:
+    """Run the full tailoring pipeline for one job description and write the
+    output (.tex, .pdf, ATS report) under `config["output_dir"]`.
+    """
     print("\n" + "=" * 60)
     print(f"TexTailor pipeline started — {datetime.now().strftime('%H:%M:%S')}")
     print("=" * 60)
@@ -79,15 +91,13 @@ def run_pipeline(jd_text: str, config: dict) -> None:
 
     # ── Step 5: ATS Score report ──────────────────────────────────
     print("\n[5/5] Scoring ATS match...")
-    rewritten_plain = "\n".join(
-        strip_latex(content) for content in rewritten.values()
-    )
+    rewritten_plain = "\n".join(strip_latex(content) for content in rewritten.values())
     score_result = score(recruiter_result, rewritten_plain)
     report_path = str(out_dir / "ats_report.txt")
     write_report(score_result, report_path)
 
     # ── Done ──────────────────────────────────────────────────────
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"DONE — {score_result['overall_score']}% ATS match — {score_result['verdict']}")
     print(f"Output: {out_dir}")
     print("=" * 60)
@@ -97,12 +107,16 @@ def run_pipeline(jd_text: str, config: dict) -> None:
 
 
 class JDFileHandler(FileSystemEventHandler):
-    def __init__(self, jd_path: str, config: dict):
+    """Watches the JD input file and re-runs the pipeline on each save."""
+
+    def __init__(self, jd_path: str, config: dict) -> None:
+        """Watch `jd_path`, running the pipeline (via `config`) on each change."""
         self.jd_path = Path(jd_path).resolve()
         self.config = config
-        self._last_run = 0
+        self._last_run: float = 0
 
-    def on_modified(self, event):
+    def on_modified(self, event: FileSystemEvent) -> None:
+        """Debounce and re-run the pipeline when the watched JD file changes."""
         if Path(event.src_path).resolve() != self.jd_path:
             return
         # Debounce — ignore repeated events within 3 seconds
@@ -122,10 +136,8 @@ class JDFileHandler(FileSystemEventHandler):
             print(f"\n[ERROR] Pipeline failed: {exc}")
 
 
-import re  # noqa: E402 — needed by run_pipeline
-
-
-def main():
+def main() -> None:
+    """Start the file-watching pipeline runner."""
     config = load_config()
     jd_path = config["jd_input_path"]
 

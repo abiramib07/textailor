@@ -12,3 +12,7 @@ httpx>=0.28
 python-dotenv>=1.0
 pydantic[email]>=2.10
 # twilio  # optional — uncomment to enable AUTH_SMS_PROVIDER=twilio
+
+# Resume importer (src/agents/resume_importer.py) — PDF/Word text extraction
+pypdf>=5.0
+python-docx>=1.2

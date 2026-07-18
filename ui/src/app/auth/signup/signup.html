@@ -3,22 +3,37 @@
     <h1 class="auth-title">Create your account</h1>
     <p class="auth-subtitle">We'll verify your mobile number with an OTP next</p>
 
-    <div class="auth-error" *ngIf="error">{{ error }}</div>
+    @if (error) {
+      <div class="auth-error">{{ error }}</div>
+    }
 
-    <label class="auth-field">
-      <label>Full name</label>
-      <input type="text" [(ngModel)]="name" placeholder="Jane Doe" autocomplete="name" />
-    </label>
+    <div class="auth-field">
+      <label for="signup-name">Full name</label>
+      <input id="signup-name" type="text" [(ngModel)]="name" placeholder="Jane Doe" autocomplete="name" />
+    </div>
 
-    <label class="auth-field">
-      <label>Mobile number</label>
-      <input type="text" [(ngModel)]="mobile_number" placeholder="+91XXXXXXXXXX" autocomplete="tel" />
-    </label>
+    <div class="auth-field">
+      <label for="signup-mobile">Mobile number</label>
+      <input
+        id="signup-mobile"
+        type="text"
+        [(ngModel)]="mobile_number"
+        placeholder="+91XXXXXXXXXX"
+        autocomplete="tel"
+      />
+    </div>
 
-    <label class="auth-field">
-      <label>Email address</label>
-      <input type="email" [(ngModel)]="email" placeholder="you@example.com" autocomplete="email" (keyup.enter)="submit()" />
-    </label>
+    <div class="auth-field">
+      <label for="signup-email">Email address</label>
+      <input
+        id="signup-email"
+        type="email"
+        [(ngModel)]="email"
+        placeholder="you@example.com"
+        autocomplete="email"
+        (keyup.enter)="submit()"
+      />
+    </div>
 
     <button class="auth-btn auth-btn-primary" [disabled]="!valid || loading" (click)="submit()">
       {{ loading ? 'Sending code…' : 'Continue' }}

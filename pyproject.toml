@@ -1,0 +1,50 @@
+[project]
+name = "textailor"
+version = "0.1.0"
+description = "AI-powered resume tailoring pipeline: JD analysis, LaTeX rewriting, ATS scoring, and a mobile+PIN/Google login module."
+requires-python = ">=3.12"
+dependencies = [
+    "watchdog==4.0.0",
+    "plyer==2.1.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pyjwt>=2.10",
+    "bcrypt>=4.2",
+    "httpx>=0.28",
+    "python-dotenv>=1.0",
+    "pydantic[email]>=2.10",
+    "pypdf>=5.0",
+    "python-docx>=1.2",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["ui", "output", "inputs", "resume"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # import sorting
+    "N",   # PEP 8 naming
+    "UP",  # pyupgrade (modern syntax)
+    "B",   # bugbear (common bug patterns)
+    "SIM", # simplify
+    "C4",  # comprehensions
+]
+ignore = [
+    "E501", # line length is handled by the formatter, not worth erroring on prompt strings
+    "B008", # Depends(...) in a default arg is the standard FastAPI dependency-injection idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+exclude = ["ui/", "output/", "inputs/"]

@@ -1,3 +1,7 @@
+"""Rewriter agent — tailors each resume section's LaTeX content to a job
+description's missing keywords and action verbs, one Claude call per section.
+"""
+
 import re
 import sys
 from pathlib import Path
@@ -7,7 +11,7 @@ from claude_client import ask_claude
 
 _PROMPT = """You are an expert resume writer specialising in ATS-optimised LaTeX resumes.
 
-Your task: rewrite the LaTeX content for the sections listed below.
+Your task: rewrite the LaTeX content for ONE section below.
 
 RULES:
 1. Rewrite bullet points using Google XYZ formula: "Accomplished [X], as measured by [Y], by doing [Z]"
@@ -18,8 +22,10 @@ RULES:
 6. Only modify the human-readable text INSIDE \\item[] blocks and section prose
 7. Do NOT touch the structure, spacing commands, or custom macros
 8. ESCAPE these characters in all plain text: & → \\& (P\\&L not P&L), % → \\% (except comment lines starting with %), # → \\#
-9. Output each section wrapped in markers: ===BEGIN SECTION: Name=== and ===END SECTION: Name===
-10. Output ONLY the rewritten LaTeX — no explanation, no markdown fences
+9. Output ONLY the rewritten LaTeX section content — no markers, no explanation, no markdown fences,
+   no notes, no tables, and no commentary about your choices anywhere before, inside, or after the
+   LaTeX. Your entire response must be valid LaTeX and nothing else — it gets inserted directly into
+   the .tex file and compiled as-is.
 
 MISSING KEYWORDS TO INCORPORATE (only if contextually honest):
 {keywords}
@@ -27,78 +33,79 @@ MISSING KEYWORDS TO INCORPORATE (only if contextually honest):
 JD ACTION VERBS TO USE:
 {verbs}
 
-SECTIONS TO REWRITE:
-{sections}
+SECTION TO REWRITE ({name}):
+{content}
 """
-
-_SECTION_BLOCK = "===SECTION: {name}===\n{content}\n===END==="
-
-
-def _build_section_input(sections: dict, names_to_rewrite: list) -> str:
-    blocks = []
-    for name in names_to_rewrite:
-        if name in sections:
-            blocks.append(_SECTION_BLOCK.format(name=name, content=sections[name]))
-    return "\n\n".join(blocks)
 
 
 def _escape_ampersands(tex: str) -> str:
-    """Escape bare & that LaTeX would interpret as table-column separators."""
-    # Replace & not already escaped (not preceded by \)
-    return re.sub(r'(?<!\\)&', r'\\&', tex)
+    return re.sub(r"(?<!\\)&", r"\\&", tex)
 
 
-def _parse_output(raw: str) -> dict:
-    """Extract rewritten sections from Claude's marked output."""
-    pattern = r"===BEGIN SECTION:\s*(.+?)===(.*?)===END SECTION:\s*\1==="
-    matches = re.findall(pattern, raw, re.DOTALL)
-    if matches:
-        return {name.strip(): _escape_ampersands(content.strip()) for name, content in matches}
+def _strip_leaked_commentary(tex: str) -> str:
+    """The prompt tells Claude to output ONLY LaTeX, but it sometimes still
+    appends a trailing explanation of its choices (e.g. a "Notes on keyword
+    placement" markdown table). That leaks literal markdown into the .tex
+    file and can break compilation outright — a backtick-quoted `\\item` in
+    a table cell, for instance, reads to LaTeX as a real \\item outside any
+    list environment. Truncate at the first sign of markdown creeping in,
+    since valid LaTeX content here never starts a line with "|" or "**".
+    """
+    lines = tex.split("\n")
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if (
+            stripped.startswith("|")
+            or re.match(r"^-{3,}$", stripped)
+            or re.match(r"^\*\*notes\b", stripped, re.IGNORECASE)
+            or re.match(r"^notes on\b", stripped, re.IGNORECASE)
+        ):
+            return "\n".join(lines[:i]).rstrip()
+    return tex
 
-    # Fallback: try simpler markers
-    pattern2 = r"===SECTION:\s*(.+?)===(.*?)===END==="
-    matches2 = re.findall(pattern2, raw, re.DOTALL)
-    return {name.strip(): _escape_ampersands(content.strip()) for name, content in matches2}
+
+def _rewrite_section(name: str, content: str, keywords: list, verbs: list) -> str:
+    prompt = _PROMPT.format(
+        name=name,
+        content=content,
+        keywords="\n".join(f"- {kw}" for kw in keywords),
+        verbs=", ".join(verbs),
+    )
+    raw = ask_claude(prompt)
+    cleaned = _strip_leaked_commentary(raw.strip())
+    return _escape_ampersands(cleaned.strip())
 
 
 def rewrite(
     sections: dict,
     priority_keywords: list,
     key_action_verbs: list,
-    sections_to_rewrite: list = None,
+    sections_to_rewrite: list | None = None,
 ) -> dict:
-    """
-    Rewrite resume sections with JD keywords injected using Google XYZ formula.
-
-    Args:
-        sections           : dict from latex_parser.extract_sections()
-        priority_keywords  : list from recruiter.analyze()["priority_adds"]
-        key_action_verbs   : list from recruiter.analyze()["key_action_verbs"]
-        sections_to_rewrite: subset of section names to rewrite (defaults to all except Education)
-
-    Returns:
-        dict of {section_name: rewritten_latex}
-    """
+    """Call Claude once per section to avoid timeout on large prompts."""
     if sections_to_rewrite is None:
         sections_to_rewrite = [k for k in sections if k != "Education"]
 
-    section_input = _build_section_input(sections, sections_to_rewrite)
-
-    prompt = _PROMPT.format(
-        keywords="\n".join(f"- {kw}" for kw in priority_keywords),
-        verbs=", ".join(key_action_verbs),
-        sections=section_input,
-    )
-
-    raw = ask_claude(prompt)
-    return _parse_output(raw)
+    result = {}
+    for name in sections_to_rewrite:
+        if name not in sections:
+            continue
+        print(f"[rewriter] rewriting section: {name}", flush=True)
+        try:
+            result[name] = _rewrite_section(
+                name, sections[name], priority_keywords, key_action_verbs
+            )
+            print(f"[rewriter] done: {name}", flush=True)
+        except Exception as e:
+            print(f"[rewriter] WARN: {name} failed ({e}) — keeping original", flush=True)
+            result[name] = sections[name]
+    return result
 
 
 if __name__ == "__main__":
-    import json
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from latex_parser import parse_resume
     from agents.recruiter import analyze
+    from latex_parser import parse_resume
 
     sample_jd = """
     AI/ML Engineer — Bangalore (Hybrid)
@@ -128,7 +135,7 @@ if __name__ == "__main__":
     )
 
     for name, content in result.items():
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"SECTION: {name}")
         print("=" * 60)
         print(content[:800])

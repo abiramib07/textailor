@@ -1,5 +1,5 @@
-import { Component, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ChangeDetectorRef, inject } from '@angular/core';
+
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -7,16 +7,18 @@ import { AuthService } from '../auth.service';
 @Component({
   selector: 'app-complete-profile',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
   templateUrl: './complete-profile.html',
   styleUrl: '../auth-shared.scss',
 })
 export class CompleteProfileComponent {
+  private auth = inject(AuthService);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
   mobile_number = '';
   error = '';
   loading = false;
-
-  constructor(private auth: AuthService, private router: Router, private cdr: ChangeDetectorRef) {}
 
   submit(): void {
     if (!this.mobile_number.trim() || this.loading) return;
@@ -40,6 +42,6 @@ export class CompleteProfileComponent {
   }
 
   skip(): void {
-    this.router.navigate(['/welcome']);
+    this.router.navigate(['/']);
   }
 }

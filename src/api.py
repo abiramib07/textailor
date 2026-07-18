@@ -1,3 +1,10 @@
+"""FastAPI application: the resume-tailoring pipeline (generate/status/pdf),
+chat-based editing, resume history, the ATS verifier, and the email
+generator, plus the mounted `auth` router. This is the HTTP counterpart to
+`main.py`'s file-watcher CLI — same pipeline, exposed over REST for the
+Angular frontend.
+"""
+
 import logging
 import re
 import sys
@@ -9,7 +16,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -18,14 +25,31 @@ from agents.ats_scorer import score, write_report
 from agents.chat_editor import execute as chat_execute
 from agents.chat_editor import plan as chat_plan
 from agents.chat_editor import undo as chat_undo
+from agents.email_generator import generate_email, revise_email
 from agents.recruiter import analyze
 from agents.rewriter import rewrite
+from agents.verifier import explain_keyword, verify
 from auth.db import init_db as init_auth_db
 from auth.router import router as auth_router
+from career.db import init_db as init_career_db
+from career.router import router as career_router
+from career.topic_mapping import log_keywords as log_jd_keywords
 from compiler import compile_tex
+from email_patterns import init_db as init_email_patterns_db
+from email_patterns import learn as learn_email_pattern
+from email_patterns import recent_patterns as recent_email_patterns
+from history import get_entry as history_get
+from history import init_db as init_history_db
+from history import list_entries as history_list
+from history import save_entry as history_save
 from latex_parser import parse_resume, strip_latex
-from latex_patcher import patch as patch_tex, write_tailored_tex
+from latex_patcher import patch as patch_tex
+from latex_patcher import write_tailored_tex
 from main import load_config
+from notifier import notify_email_done, notify_resume_done, notify_resume_failed
+from resumes.db import get_default_resume, get_resume, resolve_resume_id
+from resumes.db import init_db as init_resumes_db
+from resumes.router import router as resumes_router
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 # Don't call basicConfig here — uvicorn configures the root logger at startup.
@@ -36,22 +60,36 @@ app = FastAPI(title="TexTailor API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "http://127.0.0.1:4200"],
+    # Matches any localhost/127.0.0.1 port, not just 4200 — `ng serve` picks a
+    # different port if 4200 is busy, and IDE preview/port-forwarding proxies
+    # (VS Code, Cursor, etc.) often serve the app through their own random
+    # port too. Still safe for a local-only dev tool since it never matches
+    # a non-loopback origin.
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=True,  # required so the auth cookies are sent on cross-origin XHR
 )
 
 app.include_router(auth_router)
+app.include_router(career_router)
+app.include_router(resumes_router)
 
 # task_id -> task state
 _tasks: dict = {}
 
-# plan_id -> { summary, message }   (short-lived, in-memory)
+# plan_id -> { summary, message, resume_path, resume_id }   (short-lived, in-memory)
 _plans: dict = {}
+
+# resume_id -> [{role, text}, ...]   (chat plan-phase transcript, cleared once
+# a plan for that resume is successfully applied)
+_chat_history: dict[str, list[dict]] = {}
 
 # edit_id -> pdf_path   (chat edits)
 _chat_pdfs: dict = {}
+
+# email_id -> { to, subject, body, role_title, history: [...] }
+_emails: dict = {}
 
 STEP_NAMES = [
     "Parse resume",
@@ -60,6 +98,16 @@ STEP_NAMES = [
     "Compile PDF",
     "Score ATS match",
 ]
+
+
+def _resolve_resume(resume_id: str | None) -> tuple[str, str]:
+    """Return (resume_id, tex_path) for a request — falls back to the
+    default resume identity when `resume_id` is None."""
+    rid = resolve_resume_id(resume_id)
+    resume = get_resume(rid)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return rid, resume["tex_path"]
 
 
 def _make_step(name: str) -> dict:
@@ -80,7 +128,14 @@ def _done_step(task_id: str, idx: int, t0: float, detail: str = ""):
     step["status"] = "done"
     step["detail"] = detail
     step["elapsed"] = f"{elapsed:.1f}s"
-    log.info("[%s/%s] %s — done (%ss)  %s", idx + 1, len(STEP_NAMES), step["name"], f"{elapsed:.1f}", detail)
+    log.info(
+        "[%s/%s] %s — done (%ss)  %s",
+        idx + 1,
+        len(STEP_NAMES),
+        step["name"],
+        f"{elapsed:.1f}",
+        detail,
+    )
 
 
 def _fail_step(task_id: str, idx: int, t0: float, err: str):
@@ -89,19 +144,26 @@ def _fail_step(task_id: str, idx: int, t0: float, err: str):
     step["status"] = "error"
     step["detail"] = err
     step["elapsed"] = f"{elapsed:.1f}s"
-    log.error("[%s/%s] %s — FAILED (%ss): %s", idx + 1, len(STEP_NAMES), step["name"], f"{elapsed:.1f}", err)
+    log.error(
+        "[%s/%s] %s — FAILED (%ss): %s",
+        idx + 1,
+        len(STEP_NAMES),
+        step["name"],
+        f"{elapsed:.1f}",
+        err,
+    )
 
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
-def _pipeline(task_id: str, jd: str, config: dict):
-    log.info("Pipeline started  task_id=%s", task_id)
+def _pipeline(task_id: str, jd: str, config: dict, resume_path: str, resume_id: str):
+    log.info("Pipeline started  task_id=%s  resume_id=%s", task_id, resume_id)
     _tasks[task_id]["status"] = "running"
     pipeline_start = time.perf_counter()
 
     try:
         # Step 1 — Parse
         t = _start_step(task_id, 0)
-        resume_data = parse_resume(config["resume_path"])
+        resume_data = parse_resume(resume_path)
         sections = list(resume_data["sections"].keys())
         _done_step(task_id, 0, t, f"Sections: {', '.join(sections)}")
 
@@ -109,8 +171,13 @@ def _pipeline(task_id: str, jd: str, config: dict):
         t = _start_step(task_id, 1)
         recruiter_result = analyze(jd, resume_data["plain_text"])
         job_title = recruiter_result.get("job_title", "Role")
+        _tasks[task_id]["job_title"] = job_title
         missing = len(recruiter_result["missing_from_resume"])
         _done_step(task_id, 1, t, f"Role: {job_title} · {missing} missing keywords")
+        try:
+            log_jd_keywords(None, recruiter_result, jd, resume_id)
+        except Exception:
+            log.exception("Topic-mapping keyword logging failed (non-fatal)")
 
         # Step 3 — Rewrite
         t = _start_step(task_id, 2)
@@ -150,7 +217,12 @@ def _pipeline(task_id: str, jd: str, config: dict):
         _done_step(task_id, 4, t, f"{score_result['overall_score']}% — {score_result['verdict']}")
 
         total = time.perf_counter() - pipeline_start
-        log.info("Pipeline complete  %.1fs  score=%s%%  %s", total, score_result["overall_score"], score_result["verdict"])
+        log.info(
+            "Pipeline complete  %.1fs  score=%s%%  %s",
+            total,
+            score_result["overall_score"],
+            score_result["verdict"],
+        )
 
         _tasks[task_id]["status"] = "done"
         _tasks[task_id]["pdf_path"] = pdf_path
@@ -159,6 +231,7 @@ def _pipeline(task_id: str, jd: str, config: dict):
         _tasks[task_id]["score_result"] = score_result
         _tasks[task_id]["recruiter_result"] = recruiter_result
         _tasks[task_id]["out_dir"] = str(out_dir)
+        notify_resume_done(job_title, score_result["overall_score"], score_result["verdict"])
 
     except Exception as exc:
         # mark the currently-running step as failed
@@ -169,23 +242,39 @@ def _pipeline(task_id: str, jd: str, config: dict):
         _tasks[task_id]["status"] = "error"
         _tasks[task_id]["error"] = str(exc)
         log.error("Pipeline failed: %s", exc, exc_info=True)
+        notify_resume_failed(_tasks[task_id].get("job_title", "Resume"), str(exc))
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 class GenerateRequest(BaseModel):
+    """Body for POST /api/generate."""
+
     jd: str
+    resume_id: str | None = None
 
 
 @app.on_event("startup")
-def _startup():
+def _startup() -> None:
+    """Initialize the auth, resumes, history, email-pattern, and career
+    databases on startup, in dependency order (resumes must exist before
+    the other tables can backfill their `resume_id` column)."""
+    config = load_config()
     init_auth_db()
+    init_resumes_db(config["resume_path"])
+    default_resume_id = get_default_resume()["id"]
+    init_history_db(default_resume_id)
+    init_email_patterns_db(default_resume_id)
+    init_career_db(default_resume_id)
     log.info("TexTailor API ready on http://localhost:8000")
     log.info("Docs → http://localhost:8000/docs")
 
 
 @app.post("/api/generate")
-def generate(req: GenerateRequest):
+def generate(req: GenerateRequest) -> dict:
+    """Start the tailoring pipeline in a background thread; returns a task_id
+    to poll via /api/status/{task_id}."""
     task_id = str(uuid.uuid4())
+    resume_id, resume_path = _resolve_resume(req.resume_id)
     _tasks[task_id] = {
         "status": "pending",
         "steps": [_make_step(n) for n in STEP_NAMES],
@@ -193,16 +282,20 @@ def generate(req: GenerateRequest):
         "verdict": None,
         "pdf_path": None,
         "error": None,
+        "resume_id": resume_id,
     }
     config = load_config()
     log.info("New request  task_id=%s  jd_length=%d chars", task_id, len(req.jd))
-    t = threading.Thread(target=_pipeline, args=(task_id, req.jd, config), daemon=True)
+    t = threading.Thread(
+        target=_pipeline, args=(task_id, req.jd, config, resume_path, resume_id), daemon=True
+    )
     t.start()
     return {"task_id": task_id}
 
 
 @app.get("/api/status/{task_id}")
-def get_status(task_id: str):
+def get_status(task_id: str) -> dict:
+    """Poll a task's pipeline progress (steps, score, verdict, error)."""
     task = _tasks.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -218,48 +311,105 @@ def get_status(task_id: str):
 
 
 @app.get("/api/pdf/{task_id}")
-def get_pdf(task_id: str):
+def get_pdf(task_id: str) -> FileResponse:
+    """Serve the tailored resume PDF for a completed task."""
     task = _tasks.get(task_id)
     if not task or not task["pdf_path"]:
         raise HTTPException(status_code=404, detail="PDF not ready")
     pdf = Path(task["pdf_path"])
     if not pdf.exists():
         raise HTTPException(status_code=404, detail="PDF file missing")
-    return FileResponse(str(pdf), media_type="application/pdf", headers={"Content-Disposition": "inline"})
+    return FileResponse(
+        str(pdf), media_type="application/pdf", headers={"Content-Disposition": "inline"}
+    )
 
 
 # ── Chat endpoints ────────────────────────────────────────────────────────────
 
+
 class ChatPlanRequest(BaseModel):
+    """Body for POST /api/chat/plan."""
+
     message: str
+    resume_id: str | None = None
 
 
 class ChatExecuteRequest(BaseModel):
+    """Body for POST /api/chat/execute."""
+
     plan_id: str
     message: str
 
 
 @app.post("/api/chat/plan")
 def post_chat_plan(req: ChatPlanRequest):
-    """Phase 1 — analyse intent, return plain-English plan. No resume changes yet."""
-    result = chat_plan(req.message)
+    """Phase 1 — analyse intent, return plain-English plan. No resume changes yet.
+
+    Replays this resume's running chat history back to the plan agent so
+    follow-up messages ("add the above", answering a clarifying question)
+    can be resolved instead of analysed as a standalone request.
+    """
+    resume_id, resume_path = _resolve_resume(req.resume_id)
+    history = _chat_history.setdefault(resume_id, [])
+    result = chat_plan(req.message, Path(resume_path), history)
     plan_id = str(uuid.uuid4())
-    _plans[plan_id] = {"summary": result.get("summary", ""), "message": req.message}
-    log.info("Chat plan  plan_id=%s  intent=%s  confidence=%s",
-             plan_id, result.get("intent_type"), result.get("confidence"))
+    _plans[plan_id] = {
+        "summary": result.get("summary", ""),
+        "message": req.message,
+        "resume_path": resume_path,
+        "resume_id": resume_id,
+    }
+
+    history.append({"role": "user", "text": req.message})
+    assistant_text = result.get("summary", "")
+    if result.get("questions"):
+        assistant_text += " " + " ".join(result["questions"])
+    history.append({"role": "assistant", "text": assistant_text})
+
+    log.info(
+        "Chat plan  plan_id=%s  resume_id=%s  intent=%s  confidence=%s",
+        plan_id,
+        resume_id,
+        result.get("intent_type"),
+        result.get("confidence"),
+    )
     return {**result, "plan_id": plan_id}
 
 
 @app.post("/api/chat/execute")
 def post_chat_execute(req: ChatExecuteRequest):
-    """Phase 2 — user confirmed; apply LaTeX patches, compile, serve new PDF."""
+    """Phase 2 — user confirmed; apply LaTeX patches, compile, serve new PDF.
+
+    On success, clears the resume's chat history — the accumulated context
+    has now been resolved and applied, so the next message starts fresh.
+    """
     plan_data = _plans.get(req.plan_id)
     if not plan_data:
-        raise HTTPException(status_code=404, detail="Plan not found or expired — please resend your request")
-    result = chat_execute(message=req.message, plan_summary=plan_data["summary"])
+        raise HTTPException(
+            status_code=404, detail="Plan not found or expired — please resend your request"
+        )
+    result = chat_execute(
+        message=req.message,
+        plan_summary=plan_data["summary"],
+        resume_path=Path(plan_data["resume_path"]),
+    )
     edit_id = str(uuid.uuid4())
     if result["success"] and result.get("pdf_path"):
         _chat_pdfs[edit_id] = result["pdf_path"]
+
+    resume_id = plan_data.get("resume_id")
+    if resume_id:
+        if result["success"]:
+            _chat_history[resume_id] = []
+        else:
+            history = _chat_history.setdefault(resume_id, [])
+            history.append(
+                {
+                    "role": "assistant",
+                    "text": f"(Tried to apply that and it failed: {result.get('error', 'unknown error')})",
+                }
+            )
+
     log.info("Chat execute  edit_id=%s  success=%s", edit_id, result["success"])
     return {
         "edit_id": edit_id,
@@ -276,13 +426,22 @@ def get_chat_pdf(edit_id: str):
     pdf_path = _chat_pdfs.get(edit_id)
     if not pdf_path or not Path(pdf_path).exists():
         raise HTTPException(status_code=404, detail="Chat PDF not available")
-    return FileResponse(str(pdf_path), media_type="application/pdf", headers={"Content-Disposition": "inline"})
+    return FileResponse(
+        str(pdf_path), media_type="application/pdf", headers={"Content-Disposition": "inline"}
+    )
+
+
+class ChatUndoRequest(BaseModel):
+    """Body for POST /api/chat/undo."""
+
+    resume_id: str | None = None
 
 
 @app.post("/api/chat/undo")
-def post_chat_undo():
-    """Revert resume/main.tex to the previous backup and recompile."""
-    result = chat_undo()
+def post_chat_undo(req: ChatUndoRequest | None = None):
+    """Revert a resume's `.tex` file to the previous backup and recompile."""
+    _, resume_path = _resolve_resume(req.resume_id if req else None)
+    result = chat_undo(Path(resume_path))
     edit_id = str(uuid.uuid4())
     if result["success"] and result.get("pdf_path"):
         _chat_pdfs[edit_id] = result["pdf_path"]
@@ -296,6 +455,7 @@ def post_chat_undo():
 
 
 # ── ATS Report endpoint ───────────────────────────────────────────────────────
+
 
 @app.get("/api/report/{task_id}")
 def get_report(task_id: str):
@@ -311,9 +471,21 @@ def get_report(task_id: str):
 
 # ── ATS Boost endpoint ────────────────────────────────────────────────────────
 
+
+class BoostRequest(BaseModel):
+    """Body for POST /api/boost/{task_id}."""
+
+    selected_keywords: list[str] | None = None
+
+
 @app.post("/api/boost/{task_id}")
-def post_boost(task_id: str):
-    """Re-run the rewriter with ALL missing keywords to push ATS score toward 90%+."""
+def post_boost(task_id: str, req: BoostRequest | None = None):
+    """Re-run the rewriter to push the ATS score up.
+
+    Only weaves in `req.selected_keywords` if given (the user picked which
+    missing keywords they actually have) — otherwise falls back to every
+    missing keyword, for backward compatibility with a direct boost call.
+    """
     task = _tasks.get(task_id)
     if not task or task.get("status") != "done":
         raise HTTPException(status_code=400, detail="Task not complete or not found")
@@ -325,21 +497,25 @@ def post_boost(task_id: str):
     if not recruiter_result or not score_result or not out_dir_str:
         raise HTTPException(status_code=400, detail="Missing pipeline data — re-generate first")
 
-    config = load_config()
+    _, resume_path = _resolve_resume(task.get("resume_id"))
     all_missing = score_result["required_missing"] + score_result["preferred_missing"]
-    if not all_missing:
+    selected = req.selected_keywords if req and req.selected_keywords is not None else all_missing
+    # Keep only keywords that are actually missing — ignore anything stale/unexpected.
+    selected = [kw for kw in selected if kw in all_missing]
+
+    if not selected:
         return {
             "boost_id": None,
             "score": score_result["overall_score"],
             "verdict": score_result["verdict"],
             "has_pdf": False,
-            "message": "No missing keywords — score is already optimal.",
+            "message": "No keywords selected — nothing to weave in.",
         }
 
-    resume_data = parse_resume(config["resume_path"])
+    resume_data = parse_resume(resume_path)
     rewritten = rewrite(
         sections=resume_data["sections"],
-        priority_keywords=all_missing,
+        priority_keywords=selected,
         key_action_verbs=recruiter_result.get("key_action_verbs", []),
         sections_to_rewrite=["Professional Summary", "Experience", "Technical Skills"],
     )
@@ -377,56 +553,75 @@ def post_boost(task_id: str):
 
 # ── Resume MD editor endpoints ────────────────────────────────────────────────
 
-_RESUME_MD = Path(__file__).parent.parent / "resume" / "resume-content.md"
-_RESUME_TEX_PATH = Path(__file__).parent.parent / "resume" / "main.tex"
+
+def _resume_md_path(tex_path: str) -> Path:
+    """The Markdown draft lives next to a resume's `.tex` file."""
+    return Path(tex_path).parent / "resume-content.md"
 
 
 @app.get("/api/resume-md")
-def get_resume_md():
+def get_resume_md(resume_id: str | None = None):
     """Return the resume content as Markdown. Generates it from main.tex on first call."""
-    if not _RESUME_MD.exists():
+    _, tex_path = _resolve_resume(resume_id)
+    md_path = _resume_md_path(tex_path)
+    if not md_path.exists():
         from md_converter import tex_to_md
-        tex = _RESUME_TEX_PATH.read_text(encoding="utf-8")
+
+        tex = Path(tex_path).read_text(encoding="utf-8")
         md = tex_to_md(tex)
-        _RESUME_MD.write_text(md, encoding="utf-8")
-    return {"content": _RESUME_MD.read_text(encoding="utf-8")}
+        md_path.write_text(md, encoding="utf-8")
+    return {"content": md_path.read_text(encoding="utf-8")}
 
 
 class ResumeMdBody(BaseModel):
+    """Body for PUT /api/resume-md."""
+
     content: str
+    resume_id: str | None = None
 
 
 @app.put("/api/resume-md")
 def put_resume_md(req: ResumeMdBody):
-    """Save the edited Markdown draft to resume/resume-content.md."""
-    _RESUME_MD.write_text(req.content, encoding="utf-8")
+    """Save the edited Markdown draft next to the resume's `.tex` file."""
+    _, tex_path = _resolve_resume(req.resume_id)
+    _resume_md_path(tex_path).write_text(req.content, encoding="utf-8")
     return {"saved": True}
 
 
+class ResumeMdSyncBody(BaseModel):
+    """Body for POST /api/resume-md/sync."""
+
+    resume_id: str | None = None
+
+
 @app.post("/api/resume-md/sync")
-def sync_resume_md():
+def sync_resume_md(req: ResumeMdSyncBody | None = None):
     """Convert the saved Markdown draft → LaTeX, update main.tex, compile PDF."""
-    if not _RESUME_MD.exists():
+    _, tex_path_str = _resolve_resume(req.resume_id if req else None)
+    tex_path = Path(tex_path_str)
+    md_path = _resume_md_path(tex_path_str)
+    if not md_path.exists():
         raise HTTPException(status_code=400, detail="No resume draft found — open the editor first")
 
-    from md_converter import md_to_tex
     import shutil as _shutil
-    from agents.chat_editor import _next_backup_path
 
-    md = _RESUME_MD.read_text(encoding="utf-8")
-    original_tex = _RESUME_TEX_PATH.read_text(encoding="utf-8")
+    from agents.chat_editor import _next_backup_path
+    from md_converter import md_to_tex
+
+    md = md_path.read_text(encoding="utf-8")
+    original_tex = tex_path.read_text(encoding="utf-8")
 
     new_tex = md_to_tex(md, original_tex)
 
-    backup = _next_backup_path()
-    _shutil.copy2(_RESUME_TEX_PATH, backup)
-    _RESUME_TEX_PATH.write_text(new_tex, encoding="utf-8")
+    backup = _next_backup_path(tex_path)
+    _shutil.copy2(tex_path, backup)
+    tex_path.write_text(new_tex, encoding="utf-8")
 
     try:
-        pdf_path = compile_tex(str(_RESUME_TEX_PATH))
+        pdf_path = compile_tex(str(tex_path))
     except Exception as exc:
-        _shutil.copy2(backup, _RESUME_TEX_PATH)
-        raise HTTPException(status_code=500, detail=f"Compile failed — reverted. {exc}")
+        _shutil.copy2(backup, tex_path)
+        raise HTTPException(status_code=500, detail=f"Compile failed — reverted. {exc}") from exc
 
     edit_id = str(uuid.uuid4())
     _chat_pdfs[edit_id] = pdf_path
@@ -435,16 +630,258 @@ def sync_resume_md():
 
 
 @app.get("/api/template")
-def get_template():
-    config = load_config()
-    tex = Path(config["resume_path"])
+def get_template(resume_id: str | None = None) -> FileResponse:
+    """Serve the base resume template PDF, recompiling if main.tex changed."""
+    _, tex_path = _resolve_resume(resume_id)
+    tex = Path(tex_path)
     pdf = tex.with_suffix(".pdf")
     # Recompile if PDF is missing or main.tex has been updated since last compile
     if not pdf.exists() or tex.stat().st_mtime > pdf.stat().st_mtime:
         try:
             compile_tex(str(tex))
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Template compile failed: {exc}")
+            raise HTTPException(status_code=500, detail=f"Template compile failed: {exc}") from exc
     if not pdf.exists():
         raise HTTPException(status_code=500, detail="Template PDF could not be produced")
-    return FileResponse(str(pdf), media_type="application/pdf", headers={"Content-Disposition": "inline"})
+    return FileResponse(
+        str(pdf), media_type="application/pdf", headers={"Content-Disposition": "inline"}
+    )
+
+
+# ── Resume history ─────────────────────────────────────────────────────────────
+
+
+class HistorySaveRequest(BaseModel):
+    """Body for POST /api/history."""
+
+    task_id: str
+    company_name: str
+    job_url: str = ""
+    applied_date: str = ""
+
+
+@app.post("/api/history")
+def save_history(req: HistorySaveRequest) -> dict:
+    """Save a completed task's resume to history — company name + source URL
+    are the only things the user has to supply; everything else (job title,
+    score, verdict, PDF, resume identity) is pulled from the already-completed task."""
+    task = _tasks.get(req.task_id)
+    if not task or task.get("status") != "done" or not task.get("pdf_path"):
+        raise HTTPException(status_code=400, detail="Task not complete or not found")
+
+    resume_id, _ = _resolve_resume(task.get("resume_id"))
+    entry = history_save(
+        resume_id=resume_id,
+        company_name=req.company_name.strip(),
+        job_title=task.get("recruiter_result", {}).get("job_title", ""),
+        job_url=req.job_url.strip(),
+        pdf_path=task["pdf_path"],
+        ats_score=task.get("score"),
+        verdict=task.get("verdict"),
+        applied_date=req.applied_date.strip(),
+    )
+    return {"entry": entry}
+
+
+@app.get("/api/history")
+def get_history(resume_id: str | None = None):
+    """Latest-first list of every saved resume for one resume identity."""
+    rid, _ = _resolve_resume(resume_id)
+    return {"entries": history_list(rid)}
+
+
+@app.get("/api/history/{entry_id}/pdf")
+def get_history_pdf(entry_id: str) -> FileResponse:
+    """Serve the PDF for one saved history entry."""
+    entry = history_get(entry_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="History entry not found")
+    pdf = Path(entry["pdf_path"])
+    if not pdf.exists():
+        raise HTTPException(status_code=404, detail="PDF file no longer exists on disk")
+    return FileResponse(
+        str(pdf), media_type="application/pdf", headers={"Content-Disposition": "inline"}
+    )
+
+
+# ── Verifier agent (exact + semantic keyword matching) ──────────────────────
+
+
+def _tailored_tex_text(task: dict) -> str:
+    out_dir = task.get("out_dir")
+    if not out_dir:
+        raise HTTPException(status_code=400, detail="No tailored resume available for this task")
+    candidates = [Path(out_dir) / "resume_boosted.tex", Path(out_dir) / "resume_tailored.tex"]
+    for tex_path in candidates:
+        if tex_path.exists():
+            return strip_latex(tex_path.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="Tailored resume file not found on disk")
+
+
+@app.post("/api/verify/{task_id}")
+def run_verifier(task_id: str):
+    """Re-checks every required/preferred keyword both exactly and semantically."""
+    task = _tasks.get(task_id)
+    if not task or task.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Task not complete or not found")
+    recruiter_result = task.get("recruiter_result")
+    if not recruiter_result:
+        raise HTTPException(status_code=400, detail="Missing pipeline data — re-generate first")
+
+    resume_text = _tailored_tex_text(task)
+    result = verify(recruiter_result, resume_text)
+    task["verifier_result"] = result
+    log.info("Verifier run  task_id=%s  keywords=%d", task_id, len(result["keywords"]))
+    return result
+
+
+class ExplainRequest(BaseModel):
+    """Body for POST /api/verify/{task_id}/explain."""
+
+    keyword: str
+
+
+@app.post("/api/verify/{task_id}/explain")
+def explain(task_id: str, req: ExplainRequest) -> dict:
+    """Ad-hoc 'where did you add X' lookup for any keyword, not just the JD's list."""
+    task = _tasks.get(task_id)
+    if not task or task.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Task not complete or not found")
+
+    resume_text = _tailored_tex_text(task)
+    return explain_keyword(req.keyword.strip(), resume_text)
+
+
+# ── Email generator ───────────────────────────────────────────────────────────
+
+
+class EmailGenerateRequest(BaseModel):
+    """Body for POST /api/email/generate."""
+
+    job_post: str
+    instruction: str = ""
+    resume_id: str | None = None
+
+
+class EmailReviseRequest(BaseModel):
+    """Body for POST /api/email/revise."""
+
+    email_id: str
+    instruction: str
+
+
+class EmailUndoRequest(BaseModel):
+    """Body for POST /api/email/undo."""
+
+    email_id: str
+
+
+def _resume_plain_text(resume_id: str | None) -> str:
+    """Parse a resume identity's base resume and return its plain-text rendering."""
+    _, tex_path = _resolve_resume(resume_id)
+    resume_data = parse_resume(tex_path)
+    return resume_data["plain_text"]
+
+
+@app.post("/api/email/generate")
+def email_generate(req: EmailGenerateRequest) -> dict:
+    """Draft an application email from a pasted job post + the base resume."""
+    if not req.job_post.strip():
+        raise HTTPException(status_code=400, detail="Paste the job post text first")
+
+    resume_id, _ = _resolve_resume(req.resume_id)
+    resume_text = _resume_plain_text(resume_id)
+    learned = recent_email_patterns(resume_id)
+    try:
+        result = generate_email(req.job_post, resume_text, req.instruction, learned)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not generate email: {exc}") from exc
+
+    email_id = str(uuid.uuid4())
+    _emails[email_id] = {
+        "to": result.get("to", ""),
+        "subject": result.get("subject", ""),
+        "body": result.get("body", ""),
+        "role_title": result.get("role_title", ""),
+        "history": [],
+        "resume_id": resume_id,
+    }
+    log.info("Email generated  email_id=%s  role=%s", email_id, result.get("role_title"))
+    notify_email_done(result.get("role_title") or "this role")
+    return {"email_id": email_id, **_emails[email_id]}
+
+
+@app.post("/api/email/revise")
+def email_revise(req: EmailReviseRequest) -> dict:
+    """Apply a chat-style revision instruction to an existing email draft."""
+    current = _emails.get(req.email_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Email draft not found — generate one first")
+    if not req.instruction.strip():
+        raise HTTPException(status_code=400, detail="Tell me what to change")
+
+    resume_text = _resume_plain_text(current.get("resume_id"))
+    try:
+        result = revise_email(current, req.instruction, resume_text)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not revise email: {exc}") from exc
+
+    current["history"].append(
+        {"to": current["to"], "subject": current["subject"], "body": current["body"]}
+    )
+    current["to"] = result.get("to", current["to"])
+    current["subject"] = result.get("subject", current["subject"])
+    current["body"] = result.get("body", current["body"])
+    learn_email_pattern(req.instruction, current["resume_id"])
+    log.info("Email revised  email_id=%s", req.email_id)
+    return {
+        "email_id": req.email_id,
+        "to": current["to"],
+        "subject": current["subject"],
+        "body": current["body"],
+        "role_title": current["role_title"],
+        "done_summary": result.get("done_summary", "Updated the email."),
+    }
+
+
+@app.post("/api/email/undo")
+def email_undo(req: EmailUndoRequest) -> dict:
+    """Revert an email draft to its previous version."""
+    current = _emails.get(req.email_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Email draft not found")
+    if not current["history"]:
+        raise HTTPException(status_code=400, detail="Nothing to undo")
+
+    prev = current["history"].pop()
+    current["to"] = prev["to"]
+    current["subject"] = prev["subject"]
+    current["body"] = prev["body"]
+    return {
+        "email_id": req.email_id,
+        "to": current["to"],
+        "subject": current["subject"],
+        "body": current["body"],
+    }
+
+
+@app.get("/api/email/{email_id}/download")
+def email_download(email_id: str) -> Response:
+    """Download an email draft as a .eml file."""
+    current = _emails.get(email_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Email draft not found")
+
+    eml_content = (
+        f"To: {current['to']}\r\n"
+        f"Subject: {current['subject']}\r\n"
+        f"Content-Type: text/plain; charset=UTF-8\r\n"
+        f"\r\n"
+        f"{current['body']}\r\n"
+    )
+    safe_name = re.sub(r"[^\w\-]", "_", current.get("role_title") or "email")
+    return Response(
+        content=eml_content,
+        media_type="message/rfc822",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.eml"'},
+    )

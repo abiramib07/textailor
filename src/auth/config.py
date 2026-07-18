@@ -1,6 +1,11 @@
+"""Environment-driven settings for the auth module: JWT/session TTLs, OTP and
+PIN policy, cookie flags, and SMS/Google OAuth provider configuration.
+"""
+
 import os
 import secrets
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -48,7 +53,7 @@ DEV_MODE = os.environ.get("AUTH_DEV_MODE", "true").lower() != "false"
 # Set AUTH_APP_ENV=production (and serve over HTTPS) to enable it.
 IS_PRODUCTION = os.environ.get("AUTH_APP_ENV", "development") == "production"
 COOKIE_SECURE = IS_PRODUCTION
-COOKIE_SAMESITE = "lax"
+COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
 
 FRONTEND_ORIGIN = os.environ.get("AUTH_FRONTEND_ORIGIN", "http://localhost:4200")
 BACKEND_ORIGIN = os.environ.get("AUTH_BACKEND_ORIGIN", "http://localhost:8000")

@@ -1,6 +1,10 @@
+"""Patches rewritten section content back into the original resume's LaTeX,
+preserving everything outside the rewritten sections untouched.
+"""
+
 import re
-import shutil
 from pathlib import Path
+from re import Match
 
 
 def patch(
@@ -26,9 +30,13 @@ def patch(
             r"(?=\\section\*?\{|\\end\{document\})"
         )
         _new = new_content.strip()
+
+        def _replace(m: Match, new: str = _new) -> str:
+            return m.group(1) + "\n" + new + "\n\n"
+
         updated = re.sub(
             header_pattern,
-            lambda m: m.group(1) + "\n" + _new + "\n\n",
+            _replace,
             result,
             count=1,
             flags=re.DOTALL,

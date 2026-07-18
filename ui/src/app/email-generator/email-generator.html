@@ -1,0 +1,138 @@
+<div class="eg-layout">
+  <!-- LEFT: job post input -->
+  <div class="eg-panel">
+    <div class="eg-panel-label">Job post</div>
+    <textarea
+      class="eg-jobbox"
+      [(ngModel)]="jobPost"
+      placeholder="Paste the full LinkedIn job post here — role, requirements, everything. TexTailor will pull out what matters."
+      [disabled]="isGenerating"
+    ></textarea>
+
+    <div class="eg-source-row">
+      <span>Source (optional):</span>
+      <input
+        type="text"
+        class="eg-source-input"
+        [(ngModel)]="sourceUrl"
+        placeholder="linkedin.com/feed/…"
+        [disabled]="isGenerating"
+      />
+    </div>
+
+    <div class="eg-ask-row">
+      <div class="eg-ask-label">What do you need?</div>
+      <input type="text" class="eg-ask-input" [(ngModel)]="instruction" [disabled]="isGenerating" />
+    </div>
+
+    <button class="eg-primary-btn" (click)="generate()" [disabled]="!canGenerate">
+      @if (!isGenerating) {
+        <span>Generate Email</span>
+      }
+      @if (isGenerating) {
+        <span>Generating… {{ elapsedSeconds }}s</span>
+      }
+    </button>
+
+    @if (generateError) {
+      <div class="eg-error">{{ generateError }}</div>
+    }
+
+    @if (draft && !isGenerating) {
+      <div class="eg-progress-card">
+        <div class="eg-progress-head">
+          <span class="eg-progress-status">✓ Done in {{ lastGeneratedSeconds }}s</span>
+        </div>
+        <div class="eg-step">
+          <div class="eg-step-check">✓</div>
+          <div class="eg-step-body">
+            <div class="eg-step-title">Matched role</div>
+            <div class="eg-step-sub">{{ draft.role_title || 'Role extracted from post' }}</div>
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- RIGHT: email preview + revise chat -->
+  @if (draft) {
+    <div class="eg-right-col">
+      <div class="eg-panel">
+        <div class="eg-preview-head">
+          <div class="eg-panel-label" style="margin-bottom: 0">Email preview</div>
+          <div class="eg-preview-actions">
+            <button
+              type="button"
+              class="eg-icon-btn eg-icon-btn--copy"
+              [class.eg-icon-btn--copied]="copied"
+              (click)="copyText()"
+            >
+              {{ copied ? '✓ Copied!' : 'Copy text' }}
+            </button>
+            <a class="eg-icon-btn eg-icon-btn--download" [href]="downloadUrl" download
+              >↓ Download .eml</a
+            >
+            <button type="button" class="eg-icon-btn eg-icon-btn--new" (click)="newEmail()">
+              + New Email
+            </button>
+          </div>
+        </div>
+        <div class="eg-email-card">
+          <div class="eg-email-meta">
+            <div><b>To:</b> {{ draft.to }}</div>
+            <div><b>Subject:</b> {{ draft.subject }}</div>
+          </div>
+          <div class="eg-email-body">
+            @for (para of draft.body.split('\n\n'); track para) {
+              <p>{{ para }}</p>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="eg-chatpanel">
+        <div class="eg-chathead">
+          <div class="eg-panel-label" style="margin-bottom: 0">Revise via chat</div>
+          @if (canUndo) {
+            <button type="button" class="eg-undo" (click)="undo()">↺ Undo</button>
+          }
+        </div>
+        @if (chatMessages.length) {
+          <div class="eg-chatlog" #chatScroll>
+            @for (m of chatMessages; track m) {
+              <div
+                class="eg-bubble"
+                [class.eg-bubble--user]="m.role === 'user'"
+                [class.eg-bubble--assistant]="m.role === 'assistant'"
+                [class.eg-bubble--error]="m.role === 'error'"
+              >
+                {{ m.text }}
+              </div>
+            }
+          </div>
+        }
+        <div class="eg-quick-suggests">
+          @for (s of quickSuggests; track s) {
+            <button type="button" class="eg-suggest-chip" (click)="sendChat(s)">{{ s }}</button>
+          }
+        </div>
+        <div class="eg-chatinput-row">
+          <input
+            class="eg-chatinput"
+            type="text"
+            [(ngModel)]="chatInput"
+            placeholder='Tell me what to change — e.g. "mention my notice period"'
+            (keyup.enter)="sendChat()"
+            [disabled]="chatBusy"
+          />
+          <button
+            class="eg-send-btn"
+            (click)="sendChat()"
+            [disabled]="!chatInput.trim() || chatBusy"
+          >
+            {{ chatBusy ? '…' : 'Send' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

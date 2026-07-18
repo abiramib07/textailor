@@ -1,33 +1,42 @@
-<div class="auth-page" *ngIf="!loading && user">
-  <div class="auth-card">
-    <h1 class="auth-title">Welcome, {{ user.name }}</h1>
-    <p class="auth-subtitle">You're signed in</p>
-
-    <div class="auth-profile-row">
-      <span>Email</span>
-      <span>{{ user.email }}</span>
-    </div>
-    <div class="auth-profile-row">
-      <span>Mobile</span>
-      <span>{{ user.mobile_number ?? 'Not set' }}</span>
-    </div>
-    <div class="auth-profile-row">
-      <span>PIN login</span>
-      <span class="auth-badge" [class.auth-badge-yes]="user.has_pin" [class.auth-badge-no]="!user.has_pin">
-        {{ user.has_pin ? 'Enabled' : 'Not set' }}
-      </span>
-    </div>
-    <div class="auth-profile-row">
-      <span>Google account</span>
-      <span class="auth-badge" [class.auth-badge-yes]="user.google_linked" [class.auth-badge-no]="!user.google_linked">
-        {{ user.google_linked ? 'Linked' : 'Not linked' }}
-      </span>
-    </div>
-
-    <button class="auth-btn auth-btn-primary" style="margin-top: 20px;" (click)="logout()">Log out</button>
-
-    <div class="auth-links">
-      <a routerLink="/">Go to Resume Tool →</a>
+@if (!loading && user) {
+  <div class="auth-page">
+    <div class="auth-card">
+      <h1 class="auth-title">Welcome, {{ user.name }}</h1>
+      <p class="auth-subtitle">You're signed in</p>
+      <div class="auth-profile-row">
+        <span>Email</span>
+        <span>{{ user.email }}</span>
+      </div>
+      <div class="auth-profile-row">
+        <span>Mobile</span>
+        <span>{{ user.mobile_number ?? 'Not set' }}</span>
+      </div>
+      <div class="auth-profile-row">
+        <span>PIN login</span>
+        <span
+          class="auth-badge"
+          [class.auth-badge-yes]="user.has_pin"
+          [class.auth-badge-no]="!user.has_pin"
+        >
+          {{ user.has_pin ? 'Enabled' : 'Not set' }}
+        </span>
+      </div>
+      <div class="auth-profile-row">
+        <span>Google account</span>
+        <span
+          class="auth-badge"
+          [class.auth-badge-yes]="user.google_linked"
+          [class.auth-badge-no]="!user.google_linked"
+        >
+          {{ user.google_linked ? 'Linked' : 'Not linked' }}
+        </span>
+      </div>
+      <button class="auth-btn auth-btn-primary" style="margin-top: 20px" (click)="logout()">
+        Log out
+      </button>
+      <div class="auth-links">
+        <a routerLink="/">Go to Resume Tool →</a>
+      </div>
     </div>
   </div>
-</div>
+}

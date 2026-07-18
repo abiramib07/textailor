@@ -1,3 +1,8 @@
+"""Recruiter agent — extracts JD keyword requirements and compares them
+against the resume, producing the keyword gap analysis the rewriter and
+ATS scorer both consume.
+"""
+
 import json
 import re
 import sys
@@ -38,6 +43,8 @@ RESUME:
 
 
 def analyze(jd_text: str, resume_plain_text: str) -> dict:
+    """Compare a job description against the resume and return keyword
+    gap analysis (required/preferred/missing/priority keywords, action verbs)."""
     prompt = _PROMPT.format(jd=jd_text.strip(), resume=resume_plain_text.strip())
     raw = ask_claude(prompt)
 

@@ -1,4 +1,10 @@
+"""FastAPI routes for `/api/auth/*`: signup, OTP verification, PIN
+set/reset/login, Google OAuth, and session refresh/logout. Mounted into the
+main app by `src.api`.
+"""
+
 import logging
+import sqlite3
 import time
 import uuid
 from base64 import urlsafe_b64encode
@@ -33,7 +39,8 @@ _OAUTH_STATE_TTL = 10 * 60
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-def _user_row_to_profile(row) -> dict:
+def _user_row_to_profile(row: sqlite3.Row) -> dict:
+    """Map a `users` row to the public profile shape returned by the API."""
     return {
         "id": row["id"],
         "name": row["name"],
@@ -45,7 +52,8 @@ def _user_row_to_profile(row) -> dict:
     }
 
 
-def _set_session_cookies(response: Response, access_token: str, refresh_token: str):
+def _set_session_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    """Set the httpOnly access/refresh cookies on an outgoing response."""
     response.set_cookie(
         ACCESS_COOKIE,
         access_token,
@@ -66,12 +74,14 @@ def _set_session_cookies(response: Response, access_token: str, refresh_token: s
     )
 
 
-def _clear_session_cookies(response: Response):
+def _clear_session_cookies(response: Response) -> None:
+    """Delete the access/refresh cookies on logout or an expired refresh."""
     response.delete_cookie(ACCESS_COOKIE, path="/")
     response.delete_cookie(REFRESH_COOKIE, path="/")
 
 
 def _issue_session(response: Response, user_id: str) -> None:
+    """Create a new session row and set its access/refresh cookies."""
     access_token = security.issue_access_token(user_id)
     refresh_token = security.generate_refresh_token()
     with tx() as conn:
@@ -92,7 +102,10 @@ def _issue_session(response: Response, user_id: str) -> None:
 def get_current_user(
     request: Request,
     access_token: str | None = Cookie(default=None, alias=ACCESS_COOKIE),
-):
+) -> sqlite3.Row:
+    """FastAPI dependency: resolve the caller's user row from the access
+    cookie (or an `Authorization: Bearer` header), raising 401 if absent,
+    expired, or the user no longer exists."""
     token = access_token
     if not token:
         auth_header = request.headers.get("authorization", "")
@@ -110,7 +123,9 @@ def get_current_user(
     return row
 
 
-def _check_otp_cooldown(mobile_number: str, purpose: str):
+def _check_otp_cooldown(mobile_number: str, purpose: str) -> None:
+    """Raise 429 if an OTP was already sent for this mobile+purpose within
+    the resend cooldown window."""
     conn = get_conn()
     last = conn.execute(
         "SELECT created_at FROM otp_requests WHERE mobile_number = ? AND purpose = ? "
@@ -119,10 +134,14 @@ def _check_otp_cooldown(mobile_number: str, purpose: str):
     ).fetchone()
     if last and time.time() - last["created_at"] < config.OTP_RESEND_COOLDOWN_SECONDS:
         wait = int(config.OTP_RESEND_COOLDOWN_SECONDS - (time.time() - last["created_at"]))
-        raise HTTPException(status_code=429, detail=f"Please wait {wait}s before requesting another code")
+        raise HTTPException(
+            status_code=429, detail=f"Please wait {wait}s before requesting another code"
+        )
 
 
 def _send_otp(mobile_number: str, purpose: str) -> str | None:
+    """Generate, store (hashed), and dispatch an OTP. Returns the raw code
+    only in dev mode, where it's echoed back to the client instead of texted."""
     _check_otp_cooldown(mobile_number, purpose)
     otp = security.generate_otp()
     with tx() as conn:
@@ -148,7 +167,8 @@ def _send_otp(mobile_number: str, purpose: str) -> str | None:
 
 # ── Signup ───────────────────────────────────────────────────────────────────
 @router.post("/signup")
-def signup(req: SignupRequest):
+def signup(req: SignupRequest) -> dict:
+    """Create (or resume an incomplete) account and send the signup OTP."""
     conn = get_conn()
     existing = conn.execute(
         "SELECT * FROM users WHERE email = ? OR mobile_number = ?",
@@ -156,7 +176,9 @@ def signup(req: SignupRequest):
     ).fetchone()
 
     if existing and existing["pin_hash"] is not None:
-        raise HTTPException(status_code=409, detail="An account with this email or mobile number already exists")
+        raise HTTPException(
+            status_code=409, detail="An account with this email or mobile number already exists"
+        )
 
     if existing:
         # Incomplete signup (OTP/PIN never finished) — resume it rather than 409ing.
@@ -179,7 +201,8 @@ def signup(req: SignupRequest):
 
 # ── OTP send / verify (shared by signup + forgot-pin + complete-profile) ─────
 @router.post("/otp/send")
-def otp_send(req: OtpSendRequest):
+def otp_send(req: OtpSendRequest) -> dict:
+    """(Re)send an OTP for the `signup`, `reset`, or `complete_profile` flow."""
     conn = get_conn()
     if req.purpose == "signup":
         user = conn.execute(
@@ -189,12 +212,15 @@ def otp_send(req: OtpSendRequest):
             raise HTTPException(status_code=400, detail="Start signup first")
     elif req.purpose == "reset":
         user = conn.execute(
-            "SELECT * FROM users WHERE mobile_number = ? AND pin_hash IS NOT NULL", (req.mobile_number,)
+            "SELECT * FROM users WHERE mobile_number = ? AND pin_hash IS NOT NULL",
+            (req.mobile_number,),
         ).fetchone()
         if not user:
             raise HTTPException(status_code=404, detail="No account found for this mobile number")
     elif req.purpose == "complete_profile":
-        taken = conn.execute("SELECT id FROM users WHERE mobile_number = ?", (req.mobile_number,)).fetchone()
+        taken = conn.execute(
+            "SELECT id FROM users WHERE mobile_number = ?", (req.mobile_number,)
+        ).fetchone()
         if taken:
             raise HTTPException(status_code=409, detail="This mobile number is already in use")
     else:
@@ -205,7 +231,9 @@ def otp_send(req: OtpSendRequest):
 
 
 @router.post("/otp/verify")
-def otp_verify(req: OtpVerifyRequest):
+def otp_verify(req: OtpVerifyRequest) -> dict:
+    """Verify an OTP and return a short-lived token authorizing the next step
+    (PIN set/reset or mobile completion)."""
     conn = get_conn()
     row = conn.execute(
         "SELECT * FROM otp_requests WHERE mobile_number = ? AND purpose = ? AND consumed = 0 "
@@ -217,11 +245,15 @@ def otp_verify(req: OtpVerifyRequest):
     if row["expires_at"] < time.time():
         raise HTTPException(status_code=400, detail="Code expired — request a new one")
     if row["attempts"] >= config.OTP_MAX_VERIFY_ATTEMPTS:
-        raise HTTPException(status_code=429, detail="Too many incorrect attempts — request a new code")
+        raise HTTPException(
+            status_code=429, detail="Too many incorrect attempts — request a new code"
+        )
 
     if not security.verify_otp_hash(req.otp, row["otp_hash"]):
         with tx() as conn:
-            conn.execute("UPDATE otp_requests SET attempts = attempts + 1 WHERE id = ?", (row["id"],))
+            conn.execute(
+                "UPDATE otp_requests SET attempts = attempts + 1 WHERE id = ?", (row["id"],)
+            )
         remaining = config.OTP_MAX_VERIFY_ATTEMPTS - row["attempts"] - 1
         raise HTTPException(status_code=400, detail=f"Incorrect code — {remaining} attempt(s) left")
 
@@ -238,14 +270,16 @@ def otp_verify(req: OtpVerifyRequest):
 
 # ── PIN setup (end of signup) ────────────────────────────────────────────────
 @router.post("/pin/set")
-def pin_set(req: PinSetRequest, response: Response):
+def pin_set(req: PinSetRequest, response: Response) -> dict:
+    """Set the initial PIN at the end of signup and start a session."""
     payload = security.decode_otp_verified_token(req.otp_verified_token)
     if not payload or payload["purpose"] != "signup":
         raise HTTPException(status_code=401, detail="Verification expired — start signup again")
 
     conn = get_conn()
     user = conn.execute(
-        "SELECT * FROM users WHERE mobile_number = ? AND mobile_verified = 1", (payload["mobile_number"],)
+        "SELECT * FROM users WHERE mobile_number = ? AND mobile_verified = 1",
+        (payload["mobile_number"],),
     ).fetchone()
     if not user:
         raise HTTPException(status_code=400, detail="Mobile number not verified")
@@ -253,7 +287,9 @@ def pin_set(req: PinSetRequest, response: Response):
         raise HTTPException(status_code=409, detail="PIN already set — please log in")
 
     with tx() as conn:
-        conn.execute("UPDATE users SET pin_hash = ? WHERE id = ?", (security.hash_pin(req.pin), user["id"]))
+        conn.execute(
+            "UPDATE users SET pin_hash = ? WHERE id = ?", (security.hash_pin(req.pin), user["id"])
+        )
 
     _issue_session(response, user["id"])
     user = get_conn().execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
@@ -262,13 +298,16 @@ def pin_set(req: PinSetRequest, response: Response):
 
 # ── Forgot-PIN reset ──────────────────────────────────────────────────────────
 @router.post("/pin/reset")
-def pin_reset(req: PinSetRequest, response: Response):
+def pin_reset(req: PinSetRequest, response: Response) -> dict:
+    """Set a new PIN after a forgot-PIN OTP verification and start a session."""
     payload = security.decode_otp_verified_token(req.otp_verified_token)
     if not payload or payload["purpose"] != "reset":
         raise HTTPException(status_code=401, detail="Verification expired — request a new code")
 
     conn = get_conn()
-    user = conn.execute("SELECT * FROM users WHERE mobile_number = ?", (payload["mobile_number"],)).fetchone()
+    user = conn.execute(
+        "SELECT * FROM users WHERE mobile_number = ?", (payload["mobile_number"],)
+    ).fetchone()
     if not user:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -285,7 +324,9 @@ def pin_reset(req: PinSetRequest, response: Response):
 
 # ── PIN login ─────────────────────────────────────────────────────────────────
 @router.post("/pin/login")
-def pin_login(req: PinLoginRequest, response: Response):
+def pin_login(req: PinLoginRequest, response: Response) -> dict:
+    """Log in with mobile-or-email + PIN, enforcing lockout after repeated
+    failures."""
     conn = get_conn()
     user = conn.execute(
         "SELECT * FROM users WHERE (mobile_number = ? OR email = ?) AND pin_hash IS NOT NULL",
@@ -300,19 +341,27 @@ def pin_login(req: PinLoginRequest, response: Response):
 
     if not security.verify_pin(req.pin, user["pin_hash"]):
         attempts = user["failed_pin_attempts"] + 1
-        locked_until = time.time() + config.PIN_LOCKOUT_SECONDS if attempts >= config.PIN_MAX_FAILED_ATTEMPTS else None
+        locked_until = (
+            time.time() + config.PIN_LOCKOUT_SECONDS
+            if attempts >= config.PIN_MAX_FAILED_ATTEMPTS
+            else None
+        )
         with tx() as conn:
             conn.execute(
                 "UPDATE users SET failed_pin_attempts = ?, locked_until = ? WHERE id = ?",
                 (attempts, locked_until, user["id"]),
             )
         if locked_until:
-            raise HTTPException(status_code=423, detail="Too many incorrect attempts — account locked for 15 minutes")
+            raise HTTPException(
+                status_code=423,
+                detail="Too many incorrect attempts — account locked for 15 minutes",
+            )
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     with tx() as conn:
         conn.execute(
-            "UPDATE users SET failed_pin_attempts = 0, locked_until = NULL WHERE id = ?", (user["id"],)
+            "UPDATE users SET failed_pin_attempts = 0, locked_until = NULL WHERE id = ?",
+            (user["id"],),
         )
 
     _issue_session(response, user["id"])
@@ -321,7 +370,8 @@ def pin_login(req: PinLoginRequest, response: Response):
 
 # ── Google OAuth 2.1 (Authorization Code + PKCE) ─────────────────────────────
 @router.get("/google/login")
-def google_login():
+def google_login() -> RedirectResponse:
+    """Redirect to Google's consent screen, starting a PKCE authorization flow."""
     if not config.GOOGLE_CONFIGURED:
         raise HTTPException(
             status_code=501,
@@ -329,15 +379,23 @@ def google_login():
         )
     state = security.generate_refresh_token()
     verifier = google_oauth.new_pkce_verifier()
-    challenge = urlsafe_b64encode(sha256(verifier.encode("utf-8")).digest()).decode("utf-8").rstrip("=")
+    challenge = (
+        urlsafe_b64encode(sha256(verifier.encode("utf-8")).digest()).decode("utf-8").rstrip("=")
+    )
     _oauth_states[state] = {"verifier": verifier, "created_at": time.time()}
     return RedirectResponse(google_oauth.build_authorize_url(state, challenge))
 
 
 @router.get("/google/callback")
-def google_callback(code: str = "", state: str = "", error: str = ""):
-    def _fail(reason: str):
-        return RedirectResponse(f"{config.FRONTEND_ORIGIN}/auth/callback?status=error&reason={reason}")
+def google_callback(code: str = "", state: str = "", error: str = "") -> RedirectResponse:
+    """Handle Google's redirect: exchange the code, find-or-create/link the
+    user by verified email, start a session, and redirect back to the
+    frontend's `/auth/callback` route."""
+
+    def _fail(reason: str) -> RedirectResponse:
+        return RedirectResponse(
+            f"{config.FRONTEND_ORIGIN}/auth/callback?status=error&reason={reason}"
+        )
 
     if error:
         return _fail("google_denied")
@@ -383,14 +441,19 @@ def google_callback(code: str = "", state: str = "", error: str = ""):
 
 # ── Complete profile (mandatory mobile number for Google-only signups) ──────
 @router.post("/complete-mobile")
-def complete_mobile(req: CompleteMobileRequest, user=Depends(get_current_user)):
+def complete_mobile(
+    req: CompleteMobileRequest, user: sqlite3.Row = Depends(get_current_user)
+) -> dict:
+    """Attach and verify a mobile number for a Google-only account (mobile
+    is a mandatory field, but Google signups don't collect one)."""
     payload = security.decode_otp_verified_token(req.otp_verified_token)
     if not payload or payload["purpose"] != "complete_profile":
         raise HTTPException(status_code=401, detail="Verification expired — request a new code")
 
     conn = get_conn()
     taken = conn.execute(
-        "SELECT id FROM users WHERE mobile_number = ? AND id != ?", (payload["mobile_number"], user["id"])
+        "SELECT id FROM users WHERE mobile_number = ? AND id != ?",
+        (payload["mobile_number"], user["id"]),
     ).fetchone()
     if taken:
         raise HTTPException(status_code=409, detail="This mobile number is already in use")
@@ -406,12 +469,16 @@ def complete_mobile(req: CompleteMobileRequest, user=Depends(get_current_user)):
 
 # ── Session ───────────────────────────────────────────────────────────────────
 @router.get("/me")
-def me(user=Depends(get_current_user)):
+def me(user: sqlite3.Row = Depends(get_current_user)) -> dict:
+    """Return the current session's user profile."""
     return {"user": _user_row_to_profile(user)}
 
 
 @router.post("/refresh")
-def refresh(response: Response, refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE)):
+def refresh(
+    response: Response, refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE)
+) -> dict:
+    """Rotate the refresh token and issue a new access token."""
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -432,10 +499,15 @@ def refresh(response: Response, refresh_token: str | None = Cookie(default=None,
 
 
 @router.post("/logout")
-def logout(response: Response, refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE)):
+def logout(
+    response: Response, refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE)
+) -> dict:
+    """Revoke the current session and clear cookies."""
     if refresh_token:
         token_hash = security.hash_refresh_token(refresh_token)
         with tx() as conn:
-            conn.execute("UPDATE sessions SET revoked = 1 WHERE refresh_token_hash = ?", (token_hash,))
+            conn.execute(
+                "UPDATE sessions SET revoked = 1 WHERE refresh_token_hash = ?", (token_hash,)
+            )
     _clear_session_cookies(response)
     return {"ok": True}

@@ -7,12 +7,15 @@ import { PinSetupComponent } from './auth/pin-setup/pin-setup';
 import { CompleteProfileComponent } from './auth/complete-profile/complete-profile';
 import { AuthCallbackComponent } from './auth/callback/callback';
 import { WelcomeComponent } from './auth/welcome/welcome';
+import { authGuard } from './auth/auth.guard';
 
-// '' keeps the existing resume tool as the default landing page, unchanged.
-// The login/signup/PIN/OTP/Google screens are additive routes for a
-// separate login-screen project, built here as a standalone module.
+// '' is now gated — unauthenticated visitors are redirected to /login,
+// and every login path (PIN, PIN-setup, Google callback) lands straight
+// back on the resume tool instead of an intermediate /welcome screen.
+// /welcome is kept as a reachable "account" page, just not the default
+// post-login destination anymore.
 export const routes: Routes = [
-  { path: '', component: App },
+  { path: '', component: App, canActivate: [authGuard] },
   { path: 'login', component: LoginComponent },
   { path: 'signup', component: SignupComponent },
   { path: 'otp', component: OtpComponent },

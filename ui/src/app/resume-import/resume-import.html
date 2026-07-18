@@ -1,0 +1,239 @@
+<div class="ri-shell">
+  @if (stage === 'upload') {
+    <div class="ri-panel ri-upload-panel">
+      <div class="ri-panel-title">Import a Resume</div>
+      <p class="ri-hint">
+        Upload a resume — your own alternate version, or someone else's. PDF, Word (.docx), and
+        .tex are all supported. It'll be restructured into this app's format, and you'll get a
+        chat panel to curate it before saving.
+      </p>
+      @if (uploadError) {
+        <div class="ri-error">{{ uploadError }}</div>
+      }
+      <div class="ri-field">
+        <label for="ri-label">Label *</label>
+        <input
+          id="ri-label"
+          type="text"
+          class="ri-input"
+          [(ngModel)]="uploadLabel"
+          placeholder="e.g. Rahul's Resume, or My ML-focused Resume"
+          [disabled]="uploading"
+        />
+      </div>
+      <div class="ri-field">
+        <label for="ri-owner">Owner name (optional)</label>
+        <input
+          id="ri-owner"
+          type="text"
+          class="ri-input"
+          [(ngModel)]="uploadOwner"
+          placeholder="e.g. Rahul Sharma"
+          [disabled]="uploading"
+        />
+      </div>
+      <div class="ri-field">
+        <label for="ri-file">Resume file *</label>
+        <input
+          id="ri-file"
+          type="file"
+          class="ri-file-input"
+          accept=".tex,.pdf,.docx,.txt,.md"
+          (change)="onFileSelected($event)"
+          [disabled]="uploading"
+        />
+      </div>
+      <button class="ri-primary-btn" [disabled]="!canImport" (click)="startImport()">
+        @if (!uploading) {
+          <span>Import &amp; Start Curating</span>
+        }
+        @if (uploading) {
+          <span class="ri-spinner-label"><span class="ri-spinner"></span> Reading and converting…</span>
+        }
+      </button>
+      @if (uploading) {
+        <p class="ri-hint">
+          Extracting text, having Claude rebuild it into this app's resume format, and compiling
+          a preview. Usually 20–60 seconds — longer for long or multi-page resumes. (.tex files
+          skip the AI conversion step and are much faster.)
+        </p>
+      }
+    </div>
+
+    @if (existingResumes.length > 0) {
+      <div class="ri-divider"><span>or</span></div>
+
+      <div class="ri-panel ri-existing-panel">
+        <div class="ri-panel-title">Curate a Resume You Already Have</div>
+        <p class="ri-hint">
+          Already in your resume switcher? Skip the upload — open it here directly to chat-edit it.
+        </p>
+        <div class="ri-existing-list">
+          @for (r of existingResumes; track r.id) {
+            <div class="ri-existing-row">
+              <div class="ri-existing-info">
+                <span class="ri-existing-label">{{ r.label }}</span>
+                @if (r.owner_name) {
+                  <span class="ri-existing-owner">{{ r.owner_name }}</span>
+                }
+                @if (r.is_default) {
+                  <span class="ri-existing-tag">Default</span>
+                }
+              </div>
+              <button class="ri-ghost-btn" (click)="curateExisting(r)">Curate this →</button>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  }
+
+  @if (stage === 'curating') {
+    <div class="ri-curate-grid">
+      <div class="ri-panel ri-curate-left">
+        <div class="ri-curate-header">
+          <div class="ri-panel-title">Curate via Chat</div>
+          <button class="ri-ghost-btn" (click)="startOver()">← Import a different file</button>
+        </div>
+        @if (compileWarning) {
+          <div class="ri-error">
+            Initial compile had an issue — you can still chat-fix it below.
+            <br />{{ compileWarning }}
+          </div>
+        }
+        <div class="ri-chatpanel">
+          <div class="ri-chathead">
+            <span>Tell me what to change</span>
+            <button
+              class="ri-undo-btn"
+              (click)="undoChat()"
+              [disabled]="chatState !== 'idle'"
+              title="Undo last chat change"
+            >
+              ↩ Undo
+            </button>
+          </div>
+          <div class="ri-chatlog" #chatScroll>
+            @if (chatMessages.length === 0) {
+              <div class="ri-chat-hint">
+                Describe the changes you want — add skills, split a project into two entries with
+                dates, add a whole new project, rewrite a section. If anything's ambiguous, I'll
+                ask before changing it.
+              </div>
+            }
+            @for (msg of chatMessages; track msg) {
+              <div
+                class="ri-msg"
+                [class.ri-msg--user]="msg.role === 'user'"
+                [class.ri-msg--plan]="msg.role === 'plan'"
+                [class.ri-msg--bot]="msg.role === 'bot'"
+                [class.ri-msg--error]="msg.role === 'error'"
+              >
+                <div class="ri-bubble">
+                  @if (msg.role === 'plan') {
+                    <div class="ri-plan-label">Here's the plan</div>
+                  }
+                  <p class="ri-bubble-text">{{ msg.text }}</p>
+                  @if (msg.role === 'plan' && msg.changesPreview?.length) {
+                    <ul class="ri-changes-list">
+                      @for (c of msg.changesPreview; track c) {
+                        <li>{{ c }}</li>
+                      }
+                    </ul>
+                  }
+                  @if (msg.role === 'plan' && chatState === 'awaiting_confirmation') {
+                    <div class="ri-confirm-row">
+                      <button class="ri-confirm-btn" (click)="confirmPlan()">Yes, apply changes</button>
+                      <button class="ri-cancel-btn" (click)="cancelPlan()">No, cancel</button>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+            @if (isChatBusy) {
+              <div class="ri-msg ri-msg--bot">
+                <div class="ri-bubble ri-bubble--loading">
+                  <span class="ri-spinner"></span>
+                  {{
+                    chatState === 'planning'
+                      ? 'Analysing your request…'
+                      : 'Applying changes and compiling…'
+                  }}
+                </div>
+              </div>
+            }
+          </div>
+          <div class="ri-chatinput-row">
+            <textarea
+              class="ri-chat-textarea"
+              [(ngModel)]="chatInput"
+              (keydown)="onChatKeydown($event)"
+              placeholder="Paste your list of changes here…"
+              [disabled]="chatState !== 'idle'"
+            ></textarea>
+            <button
+              class="ri-send-btn"
+              (click)="sendChat()"
+              [disabled]="!chatInput.trim() || chatState !== 'idle'"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+
+        <div class="ri-save-block">
+          @if (!saved) {
+            <div class="ri-field">
+              <label for="ri-final-label">Save as</label>
+              <input
+                id="ri-final-label"
+                type="text"
+                class="ri-input"
+                [(ngModel)]="finalLabel"
+                placeholder="Resume label"
+              />
+            </div>
+            <div class="ri-field">
+              <label for="ri-final-owner">Owner name</label>
+              <input
+                id="ri-final-owner"
+                type="text"
+                class="ri-input"
+                [(ngModel)]="finalOwner"
+                placeholder="Owner name (optional)"
+              />
+            </div>
+            <button class="ri-primary-btn" [disabled]="!canSave" (click)="saveAsMain()">
+              {{ saving ? 'Saving…' : 'Save & Use as Main Resume' }}
+            </button>
+          }
+          @if (saved) {
+            <div class="ri-status-ok">
+              ✓ Saved. This is now the active resume — switch tabs to use it everywhere.
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="ri-panel ri-curate-right">
+        <div class="ri-preview-header">
+          <div class="ri-panel-title" style="margin-bottom: 0">Preview</div>
+          @if (pdfUrl) {
+            <button class="ri-ghost-btn" (click)="downloadPdf()">↓ Download PDF</button>
+          }
+        </div>
+        <div class="ri-pdf-frame-wrap">
+          @if (pdfUrl) {
+            <iframe [src]="pdfUrl" class="ri-pdf-frame" title="Imported Resume Preview"></iframe>
+          }
+          @if (!pdfUrl) {
+            <div class="ri-pdf-empty">
+              <div class="ri-pdf-empty-icon">📄</div>
+              <p>No preview available yet — the initial compile may have failed.</p>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+</div>

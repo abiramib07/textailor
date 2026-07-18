@@ -1,20 +1,22 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ChangeDetectorRef, inject } from '@angular/core';
+
 import { Router, RouterLink } from '@angular/router';
 import { AuthService, UserProfile } from '../auth.service';
 
 @Component({
   selector: 'app-welcome',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [RouterLink],
   templateUrl: './welcome.html',
   styleUrl: '../auth-shared.scss',
 })
 export class WelcomeComponent implements OnInit {
+  private auth = inject(AuthService);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
   user: UserProfile | null = null;
   loading = true;
-
-  constructor(private auth: AuthService, private router: Router, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.auth.me().subscribe({

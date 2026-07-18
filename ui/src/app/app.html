@@ -1,391 +1,1064 @@
 <div class="shell">
-
   <!-- ── Topbar ── -->
   <header class="topbar">
     <span class="logo">TexTailor</span>
     <span class="subtitle">AI Resume Automator</span>
 
+    <div class="career-dropdown resume-switcher">
+      <button type="button" class="tab-btn resume-switcher-btn" (click)="toggleResumeMenu()">
+        📄 {{ activeResumeLabel }} ▾
+      </button>
+      @if (showResumeMenu) {
+        <!-- Mouse-only convenience dismiss; keyboard users close via Escape (handled in app.ts). -->
+        <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+        <div class="career-dropdown-backdrop" (click)="toggleResumeMenu()"></div>
+        <div class="career-dropdown-menu resume-switcher-menu">
+          @for (r of resumes; track r.id) {
+            <div class="resume-switcher-row">
+              <button
+                type="button"
+                class="career-dropdown-item resume-switcher-item"
+                [class.career-dropdown-item--active]="r.id === activeResumeId"
+                (click)="selectResume(r.id)"
+              >
+                <span class="resume-switcher-item-label">{{ r.label }}</span>
+                @if (r.owner_name) {
+                  <span class="resume-switcher-owner">{{ r.owner_name }}</span>
+                }
+                @if (r.is_default) {
+                  <span class="resume-switcher-tag">Default</span>
+                }
+              </button>
+              @if (!r.is_default) {
+                <button
+                  type="button"
+                  class="resume-switcher-delete"
+                  title="Delete this resume"
+                  (click)="removeResume(r.id, $event)"
+                >
+                  ✕
+                </button>
+              }
+            </div>
+          }
+          <button type="button" class="career-dropdown-item resume-switcher-add" (click)="openAddResumeModal()">
+            + Add another resume
+          </button>
+        </div>
+      }
+    </div>
+
     <nav class="tab-nav">
-      <button class="tab-btn" [class.tab-btn--active]="activeTab === 'generate'"
-              (click)="setTab('generate')">
+      <button
+        class="tab-btn"
+        [class.tab-btn--active]="activeTab === 'generate'"
+        (click)="setTab('generate')"
+      >
         Generator
       </button>
-      <button class="tab-btn" [class.tab-btn--active]="activeTab === 'edit-resume'"
-              (click)="setTab('edit-resume')">
+      <button
+        class="tab-btn"
+        [class.tab-btn--active]="activeTab === 'edit-resume'"
+        (click)="setTab('edit-resume')"
+      >
         Resume Editor
       </button>
+      <button
+        class="tab-btn"
+        [class.tab-btn--active]="activeTab === 'import-resume'"
+        (click)="setTab('import-resume')"
+      >
+        Import Resume
+      </button>
+      <button
+        class="tab-btn"
+        [class.tab-btn--active]="activeTab === 'email-generator'"
+        (click)="setTab('email-generator')"
+      >
+        Email Generator
+      </button>
+
+      <div class="career-dropdown">
+        <button
+          type="button"
+          class="tab-btn"
+          [class.tab-btn--active]="isCareerTab"
+          (click)="toggleCareerMenu()"
+        >
+          {{ isCareerTab ? activeCareerLabel : 'Career Tools' }} ▾
+        </button>
+        @if (showCareerMenu) {
+          <!-- Mouse-only convenience dismiss; keyboard users close via Escape (handled in app.ts). -->
+          <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+          <div class="career-dropdown-backdrop" (click)="toggleCareerMenu()"></div>
+          <div class="career-dropdown-menu">
+            @for (c of careerTabs; track c.tab) {
+              <button
+                type="button"
+                class="career-dropdown-item"
+                [class.career-dropdown-item--active]="activeTab === c.tab"
+                (click)="selectCareerTab(c.tab)"
+              >
+                {{ c.label }}
+              </button>
+            }
+          </div>
+        }
+      </div>
     </nav>
 
-    <button class="btn-ghost" (click)="viewTemplate()"
-            *ngIf="activeTab === 'generate'" [disabled]="isGenerating">
-      View Template
+    @if (activeTab === 'generate') {
+      <button class="btn-ghost" (click)="viewTemplate()" [disabled]="isGenerating">
+        View Template
+      </button>
+    }
+
+    <button class="btn-ghost" (click)="toggleHistorySidebar()">
+      {{ historySidebar === 'closed' ? 'History' : 'Close History' }}
     </button>
 
-    <div class="auth-indicator" *ngIf="authChecked">
-      <ng-container *ngIf="authUser; else loggedOut">
-        <span class="auth-indicator-name">{{ authUser.name }}</span>
-        <button class="btn-ghost" (click)="logout()">Log out</button>
-      </ng-container>
-      <ng-template #loggedOut>
-        <a class="btn-ghost auth-indicator-login" routerLink="/login">Log in</a>
-      </ng-template>
-    </div>
+    @if (authChecked) {
+      <div class="auth-indicator">
+        @if (authUser) {
+          <a class="auth-indicator-name" routerLink="/welcome">{{ authUser.name }}</a>
+          <button class="btn-ghost" (click)="logout()">Log out</button>
+        } @else {
+          <a class="btn-ghost auth-indicator-login" routerLink="/login">Log in</a>
+        }
+      </div>
+    }
   </header>
 
   <!-- ══════════════════════════════════════════════════ -->
   <!--  TAB: Generator                                   -->
   <!-- ══════════════════════════════════════════════════ -->
-  <main class="layout" *ngIf="activeTab === 'generate'">
-
-    <!-- LEFT: JD input + pipeline status + score + report -->
-    <section class="panel input-panel">
-
-      <h2 class="panel-title">Job Description</h2>
-      <textarea class="jd-area" [(ngModel)]="jd"
-                placeholder="Paste the full job description here…"
-                [disabled]="isGenerating"></textarea>
-
-      <button class="btn-primary generate-btn" (click)="generate()"
-              [disabled]="!jd.trim() || isGenerating">
-        <span *ngIf="!isGenerating">Tailor My Resume</span>
-        <span *ngIf="isGenerating" class="spinner-label">
-          <span class="spinner"></span> Generating…
-        </span>
-      </button>
-
-      <!-- ── Pipeline stepper ── -->
-      <div class="stepper" *ngIf="isGenerating || status">
-        <div class="stepper-meta">
-          <span class="elapsed" *ngIf="isGenerating">⏱ {{ elapsedLabel }}</span>
-          <span class="est-label" *ngIf="isGenerating">Est. 45 – 90s</span>
-          <span class="elapsed done-label" *ngIf="!isGenerating && status?.status === 'done'">
-            ✓ Done in {{ elapsedLabel }}
-          </span>
-        </div>
-        <div class="progress-bar-wrap">
-          <div class="progress-bar-fill"
-               [style.width.%]="progressPct"
-               [class.bar--done]="status?.status === 'done'"></div>
-        </div>
-        <p class="progress-label">{{ progressPct }}% complete</p>
-
-        <div class="step" *ngFor="let step of displaySteps; let i = index"
-             [class.step--done]="step.status === 'done'"
-             [class.step--running]="step.status === 'running'"
-             [class.step--error]="step.status === 'error'">
-          <div class="step-icon">
-            <span *ngIf="step.status === 'pending'"  class="icon-pending">{{ i + 1 }}</span>
-            <span *ngIf="step.status === 'running'"  class="icon-spin">⟳</span>
-            <span *ngIf="step.status === 'done'"     class="icon-done">✓</span>
-            <span *ngIf="step.status === 'error'"    class="icon-err">✕</span>
-          </div>
-          <div class="step-body">
-            <div class="step-header">
-              <span class="step-name">{{ step.name }}</span>
-              <span class="step-elapsed" *ngIf="step.elapsed">{{ step.elapsed }}</span>
-              <span class="step-live"    *ngIf="step.status === 'running'">running…</span>
-            </div>
-            <p class="step-detail" *ngIf="step.detail">{{ step.detail }}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Score card ── -->
-      <div class="score-card" *ngIf="status?.status === 'done'">
-        <div class="score-ring" [style.color]="scoreColor">
-          <span class="score-num">{{ currentScore }}%</span>
-          <span class="score-label">ATS Match</span>
-        </div>
-        <div class="score-right">
-          <span class="score-verdict" [style.color]="scoreColor">
-            {{ boostScore ? 'Boosted · ' : '' }}{{ reportData?.verdict ?? status!.verdict }}
-          </span>
-          <button class="btn-report-toggle" (click)="toggleReport()" *ngIf="reportData">
-            {{ showReport ? '▲ Hide Report' : '▼ View Full Report' }}
-          </button>
-          <span class="report-loading" *ngIf="!reportData && status?.status === 'done'">
-            Loading report…
-          </span>
-        </div>
-      </div>
-
-      <!-- ── ATS Report panel ── -->
-      <div class="report-panel" *ngIf="showReport && reportData">
-
-        <div class="report-section">
-          <div class="report-section-title">
-            Required Keywords
-            <span class="kw-count">
-              {{ reportData.required_found.length }} / {{ reportData.required_found.length + reportData.required_missing.length }}
-            </span>
-          </div>
-          <div class="kw-cloud">
-            <span *ngFor="let kw of reportData.required_found"  class="kw kw--found">✓ {{ kw }}</span>
-            <span *ngFor="let kw of reportData.required_missing" class="kw kw--missing">✗ {{ kw }}</span>
-          </div>
-        </div>
-
-        <div class="report-section">
-          <div class="report-section-title">
-            Preferred Keywords
-            <span class="kw-count">
-              {{ reportData.preferred_found.length }} / {{ reportData.preferred_found.length + reportData.preferred_missing.length }}
-            </span>
-          </div>
-          <div class="kw-cloud">
-            <span *ngFor="let kw of reportData.preferred_found"  class="kw kw--found">✓ {{ kw }}</span>
-            <span *ngFor="let kw of reportData.preferred_missing" class="kw kw--missing">✗ {{ kw }}</span>
-          </div>
-        </div>
-
-        <div class="report-section" *ngIf="reportData.needs_metric_count > 0">
-          <div class="report-section-title warn-title">
-            ⚠ {{ reportData.needs_metric_count }} bullet(s) need real metrics
-          </div>
-          <p class="report-hint">Search for %NEEDS_METRIC in the tailored .tex and add numbers.</p>
-        </div>
-
-        <!-- Boost banner -->
-        <div class="boost-banner" *ngIf="reportData.overall_score < 90 && !boostScore">
-          <div class="boost-banner-text">
-            <strong>Score is {{ reportData.overall_score }}% — below 90%.</strong>
-            <span>Weave in {{ reportData.required_missing.length + reportData.preferred_missing.length }} missing keywords automatically?</span>
-          </div>
-          <button class="btn-boost" (click)="boostAts()" [disabled]="isBoosting">
-            <span *ngIf="!isBoosting">Boost to 90%+</span>
-            <span *ngIf="isBoosting" class="spinner-label"><span class="spinner"></span> Boosting…</span>
-          </button>
-        </div>
-
-        <div class="boost-done" *ngIf="boostScore">
-          ✓ Boosted to {{ boostScore }}% — new PDF loaded.
-        </div>
-      </div>
-
-      <!-- Error -->
-      <div class="error-box" *ngIf="status?.status === 'error'">{{ status!.error }}</div>
-
-    </section>
-
-    <!-- RIGHT: PDF viewer + Chat editor -->
-    <section class="panel pdf-panel">
-
-      <div class="pdf-header">
-        <h2 class="panel-title">
-          <span *ngIf="activePdfUrl">Resume Preview</span>
-          <span *ngIf="showTemplatePdf">Template Preview</span>
-          <span *ngIf="!activePdfUrl && !showTemplatePdf">Preview</span>
-        </h2>
-        <button class="btn-download" *ngIf="activePdfUrl" (click)="download()">
-          ↓ Download PDF
+  @if (activeTab === 'generate') {
+    <main class="layout">
+      <!-- LEFT: JD input + pipeline status + score + report -->
+      <section class="panel input-panel">
+        <h2 class="panel-title">Job Description</h2>
+        <textarea
+          class="jd-area"
+          [(ngModel)]="jd"
+          placeholder="Paste the full job description here…"
+          [disabled]="isGenerating"
+        ></textarea>
+        <button
+          class="btn-primary generate-btn"
+          (click)="generate()"
+          [disabled]="!jd.trim() || isGenerating"
+        >
+          @if (!isGenerating) {
+            <span>Tailor My Resume</span>
+          }
+          @if (isGenerating) {
+            <span class="spinner-label"> <span class="spinner"></span> Generating… </span>
+          }
         </button>
-      </div>
-
-      <!-- PDF iframe area -->
-      <div class="pdf-frame-wrap">
-        <iframe *ngIf="activePdfUrl"    [src]="activePdfUrl"  class="pdf-frame" title="Resume Preview"></iframe>
-        <iframe *ngIf="showTemplatePdf" [src]="templateUrl"   class="pdf-frame" title="Template Preview"></iframe>
-
-        <div class="pdf-empty" *ngIf="!activePdfUrl && !showTemplatePdf">
-          <div class="empty-icon">📄</div>
-          <p>Your tailored resume will appear here.</p>
-          <p class="empty-hint">Paste a job description and click <strong>Tailor My Resume</strong>.</p>
-          <p class="empty-hint" *ngIf="!isGenerating">Or click <strong>View Template</strong> above to preview your base resume.</p>
-        </div>
-
-        <!-- Generating overlay -->
-        <div class="pdf-generating-overlay" *ngIf="isGenerating && !activePdfUrl">
-          <div class="gen-overlay-inner">
-            <div class="gen-spinner"></div>
-            <p class="gen-label">AI is tailoring your resume…</p>
-            <p class="gen-sub">Reading your LaTeX → analysing JD → rewriting sections → compiling PDF</p>
-            <p class="gen-time">This usually takes 45–90 seconds</p>
+        <!-- ── Pipeline stepper ── -->
+        @if (isGenerating || status) {
+          <div class="stepper">
+            <div class="stepper-meta">
+              @if (isGenerating) {
+                <span class="elapsed">⏱ {{ elapsedLabel }}</span>
+              }
+              @if (isGenerating) {
+                <span class="est-label">Est. 45 – 90s</span>
+              }
+              @if (!isGenerating && status?.status === 'done') {
+                <span class="elapsed done-label"> ✓ Done in {{ elapsedLabel }} </span>
+              }
+            </div>
+            <div class="progress-bar-wrap">
+              <div
+                class="progress-bar-fill"
+                [style.width.%]="progressPct"
+                [class.bar--done]="status?.status === 'done'"
+              ></div>
+            </div>
+            <p class="progress-label">{{ progressPct }}% complete</p>
+            @for (step of displaySteps; track step; let i = $index) {
+              <div
+                class="step"
+                [class.step--done]="step.status === 'done'"
+                [class.step--running]="step.status === 'running'"
+                [class.step--error]="step.status === 'error'"
+              >
+                <div class="step-icon">
+                  @if (step.status === 'pending') {
+                    <span class="icon-pending">{{ i + 1 }}</span>
+                  }
+                  @if (step.status === 'running') {
+                    <span class="icon-spin">⟳</span>
+                  }
+                  @if (step.status === 'done') {
+                    <span class="icon-done">✓</span>
+                  }
+                  @if (step.status === 'error') {
+                    <span class="icon-err">✕</span>
+                  }
+                </div>
+                <div class="step-body">
+                  <div class="step-header">
+                    <span class="step-name">{{ step.name }}</span>
+                    @if (step.elapsed) {
+                      <span class="step-elapsed">{{ step.elapsed }}</span>
+                    }
+                    @if (step.status === 'running') {
+                      <span class="step-live">running…</span>
+                    }
+                  </div>
+                  @if (step.detail) {
+                    <p class="step-detail">{{ step.detail }}</p>
+                  }
+                </div>
+              </div>
+            }
           </div>
-        </div>
-      </div>
-
-      <!-- ── Chat editor ── -->
-      <div class="chat-panel" *ngIf="activePdfUrl">
-        <div class="chat-header">
-          <span class="chat-title">Edit via Chat</span>
-          <button class="btn-undo-chat" (click)="undoChat()"
-                  [disabled]="chatState !== 'idle'" title="Undo last chat change">
-            ↩ Undo
-          </button>
-        </div>
-
-        <div class="chat-messages" #chatScroll>
-          <div *ngIf="chatMessages.length === 0" class="chat-hint">
-            Tell me what to change — e.g. "make it 2 pages", "remove SCQA project", "increase font size"
+        }
+        <!-- ── Score card ── -->
+        @if (status?.status === 'done') {
+          <div class="score-card">
+            <div class="score-ring" [style.color]="scoreColor">
+              <span class="score-num">{{ currentScore }}%</span>
+              <span class="score-label">ATS Match</span>
+            </div>
+            <div class="score-right">
+              <span class="score-verdict" [style.color]="scoreColor">
+                {{ boostScore ? 'Boosted · ' : '' }}{{ reportData?.verdict ?? status!.verdict }}
+              </span>
+              @if (reportData) {
+                <button class="btn-report-toggle" (click)="toggleReport()">
+                  {{ showReport ? '▲ Hide Report' : '▼ View Full Report' }}
+                </button>
+              }
+              @if (!reportData && status.status === 'done') {
+                <span class="report-loading"> Loading report… </span>
+              }
+            </div>
           </div>
-
-          <div *ngFor="let msg of chatMessages" class="chat-msg"
-               [class.chat-msg--user]="msg.role === 'user'"
-               [class.chat-msg--plan]="msg.role === 'plan'"
-               [class.chat-msg--bot]="msg.role === 'bot'"
-               [class.chat-msg--error]="msg.role === 'error'">
-            <div class="chat-bubble">
-              <div *ngIf="msg.role === 'plan'" class="plan-label">Here's the plan</div>
-              <p class="chat-text">{{ msg.text }}</p>
-              <ul *ngIf="msg.role === 'plan' && msg.changesPreview?.length" class="changes-list">
-                <li *ngFor="let c of msg.changesPreview">{{ c }}</li>
-              </ul>
-              <div *ngIf="msg.role === 'plan' && chatState === 'awaiting_confirmation'" class="confirm-row">
-                <button class="btn-confirm" (click)="confirmPlan()">Yes, apply changes</button>
-                <button class="btn-cancel-plan" (click)="cancelPlan()">No, cancel</button>
+        }
+        <!-- ── Save to history ── -->
+        @if (status?.status === 'done' && !historySaved && !showSaveHistoryForm) {
+          <div class="history-save-row">
+            <span>Save this resume to your history?</span>
+            <button class="btn-ghost" (click)="openSaveHistoryForm()">Save to History</button>
+          </div>
+        }
+        @if (showSaveHistoryForm) {
+          <div class="history-save-form">
+            @if (saveHistoryError) {
+              <div class="auth-error">{{ saveHistoryError }}</div>
+            }
+            <div class="auth-field">
+              <label for="history-company">Company name *</label>
+              <input id="history-company" type="text" [(ngModel)]="saveHistoryCompany" placeholder="e.g. Acme Corp" />
+            </div>
+            <div class="auth-field">
+              <label for="history-url">Job post / LinkedIn URL (optional)</label>
+              <input
+                id="history-url"
+                type="text"
+                [(ngModel)]="saveHistoryUrl"
+                placeholder="https://linkedin.com/jobs/…"
+              />
+            </div>
+            <div class="auth-field">
+              <label for="history-applied-date">Applied date (optional)</label>
+              <input id="history-applied-date" type="date" [(ngModel)]="saveHistoryAppliedDate" />
+            </div>
+            <div class="history-save-actions">
+              <button class="btn-secondary action-btn" (click)="cancelSaveHistoryForm()">
+                Cancel
+              </button>
+              <button
+                class="btn-primary action-btn"
+                [disabled]="!saveHistoryCompany.trim() || saveHistorySaving"
+                (click)="confirmSaveHistory()"
+              >
+                {{ saveHistorySaving ? 'Saving…' : 'Save' }}
+              </button>
+            </div>
+          </div>
+        }
+        @if (historySaved) {
+          <div class="history-save-row">
+            <span>✓ Saved to history</span>
+          </div>
+        }
+        <!-- ── ATS Report panel ── -->
+        @if (showReport && reportData) {
+          <div class="report-panel">
+            <div class="report-section">
+              <button type="button" class="report-section-title report-section-title--toggle" (click)="toggleRequired()">
+                <span class="toggle-chevron" [class.toggle-chevron--open]="expandRequired">▸</span>
+                Required Keywords
+                <span class="kw-count">
+                  {{ reportData.required_found.length }} /
+                  {{ reportData.required_found.length + reportData.required_missing.length }}
+                </span>
+              </button>
+              @if (expandRequired) {
+                <div class="kw-cloud">
+                  @for (kw of reportData.required_found; track kw) {
+                    <span class="kw kw--found">✓ {{ kw }}</span>
+                  }
+                  @for (kw of reportData.required_missing; track kw) {
+                    <span class="kw kw--missing">✗ {{ kw }}</span>
+                  }
+                </div>
+              }
+            </div>
+            <div class="report-section">
+              <button type="button" class="report-section-title report-section-title--toggle" (click)="togglePreferred()">
+                <span class="toggle-chevron" [class.toggle-chevron--open]="expandPreferred">▸</span>
+                Preferred Keywords
+                <span class="kw-count">
+                  {{ reportData.preferred_found.length }} /
+                  {{ reportData.preferred_found.length + reportData.preferred_missing.length }}
+                </span>
+              </button>
+              @if (expandPreferred) {
+                <div class="kw-cloud">
+                  @for (kw of reportData.preferred_found; track kw) {
+                    <span class="kw kw--found">✓ {{ kw }}</span>
+                  }
+                  @for (kw of reportData.preferred_missing; track kw) {
+                    <span class="kw kw--missing">✗ {{ kw }}</span>
+                  }
+                </div>
+              }
+            </div>
+            @if (reportData.needs_metric_count > 0) {
+              <div class="report-section">
+                <div class="report-section-title warn-title">
+                  ⚠ {{ reportData.needs_metric_count }} bullet(s) need real metrics
+                </div>
+                <p class="report-hint">
+                  Search for %NEEDS_METRIC in the tailored .tex and add numbers.
+                </p>
+              </div>
+            }
+            <!-- Boost banner -->
+            @if (reportData.overall_score < 90 && !boostScore) {
+              <div class="boost-banner">
+                <div class="boost-banner-text">
+                  <strong>Score is {{ reportData.overall_score }}% — below 90%.</strong>
+                  <span
+                    >Weave in
+                    {{
+                      reportData.required_missing.length + reportData.preferred_missing.length
+                    }}
+                    missing keywords automatically?</span
+                  >
+                </div>
+                <button class="btn-boost" (click)="openBoostChecklist()" [disabled]="isBoosting">
+                  @if (!isBoosting) {
+                    <span>Boost to 90%+</span>
+                  }
+                  @if (isBoosting) {
+                    <span class="spinner-label"><span class="spinner"></span> Boosting…</span>
+                  }
+                </button>
+              </div>
+            }
+            @if (boostScore) {
+              <div class="boost-done">✓ Boosted to {{ boostScore }}% — new PDF loaded.</div>
+            }
+            <!-- ── Verifier agent ── -->
+            <div class="report-section verifier-section">
+              <div class="report-section-title verifier-title-row">
+                <button type="button" class="report-section-title--toggle-inline" (click)="toggleVerifierBody()">
+                  <span class="toggle-chevron" [class.toggle-chevron--open]="expandVerifierBody">▸</span>
+                  Resume Fact-Check
+                </button>
+                <button
+                  class="btn-ghost verifier-run-btn"
+                  (click)="runVerifier()"
+                  [disabled]="verifierLoading"
+                >
+                  {{ verifierLoading ? 'Checking…' : verifierResult ? 'Re-check' : 'Run Fact-Check' }}
+                </button>
+              </div>
+              @if (expandVerifierBody) {
+              <p class="report-hint">
+                The keyword lists above just check "is this word somewhere in the resume." This
+                re-checks each one properly: confirms it's really there, catches skills you have but
+                worded differently, and flags what's genuinely missing — so you know exactly what to
+                fix instead of guessing.
+              </p>
+              @if (verifierError) {
+                <div class="auth-error">{{ verifierError }}</div>
+              }
+              @if (verifierResult) {
+                <div class="verifier-groups">
+                  @if (verifierExact.length) {
+                    <div class="verifier-group">
+                      <div class="verifier-group-title verifier-group-title--exact">
+                        ✓ Confirmed in your resume ({{ verifierExact.length }})
+                      </div>
+                      <div class="verifier-list">
+                        @for (k of verifierExact; track k.keyword) {
+                          <div class="verifier-row">
+                            <span class="verifier-keyword">{{ k.keyword }}</span>
+                            @if (k.evidence) {
+                              <p class="verifier-evidence">"{{ k.evidence }}"</p>
+                            }
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+                  @if (verifierSemantic.length) {
+                    <div class="verifier-group">
+                      <div class="verifier-group-title verifier-group-title--semantic">
+                        ≈ You have this, but worded differently ({{ verifierSemantic.length }})
+                      </div>
+                      <p class="report-hint">
+                        Consider adding the exact phrase somewhere — ATS systems often match literal
+                        text, not meaning.
+                      </p>
+                      <div class="verifier-list">
+                        @for (k of verifierSemantic; track k.keyword) {
+                          <div class="verifier-row">
+                            <span class="verifier-keyword">{{ k.keyword }}</span>
+                            @if (k.evidence) {
+                              <p class="verifier-evidence">{{ k.evidence }}</p>
+                            }
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+                  @if (verifierMissing.length) {
+                    <div class="verifier-group">
+                      <div class="verifier-group-title verifier-group-title--missing">
+                        ✗ Genuinely missing ({{ verifierMissing.length }})
+                      </div>
+                      <div class="verifier-list verifier-list--compact">
+                        @for (k of verifierMissing; track k.keyword) {
+                          <span class="verifier-chip">{{ k.keyword }}</span>
+                        }
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+              <!-- Ad-hoc traceability query -->
+              <div class="explain-box">
+                <div class="ask-label">
+                  Not sure where a specific skill ended up? Ask below.
+                </div>
+                <div class="explain-row">
+                  <input
+                    type="text"
+                    class="modal-input"
+                    style="margin-bottom: 0"
+                    [(ngModel)]="explainQuery"
+                    placeholder="e.g. healthcare domain exposure"
+                    (keyup.enter)="askExplain()"
+                  />
+                  <button
+                    class="btn-ghost"
+                    (click)="askExplain()"
+                    [disabled]="!explainQuery.trim() || explainLoading"
+                  >
+                    {{ explainLoading ? '…' : 'Ask' }}
+                  </button>
+                </div>
+                @if (explainError) {
+                  <div class="auth-error">{{ explainError }}</div>
+                }
+                @if (explainResult) {
+                  <div class="verifier-row">
+                    <div class="verifier-row-top">
+                      <span class="verifier-keyword">{{ explainResult.keyword }}</span>
+                      <span
+                        class="verifier-badge"
+                        [class.verifier-badge--exact]="explainResult.status === 'exact'"
+                        [class.verifier-badge--semantic]="explainResult.status === 'semantic'"
+                        [class.verifier-badge--missing]="explainResult.status === 'missing'"
+                      >
+                        {{ verifierStatusLabel(explainResult.status) }}
+                      </span>
+                    </div>
+                    @if (explainResult.evidence) {
+                      <p class="verifier-evidence">{{ explainResult.evidence }}</p>
+                    }
+                    @if (!explainResult.evidence) {
+                      <p class="verifier-evidence">Not found anywhere in the resume.</p>
+                    }
+                  </div>
+                }
+              </div>
+              }
+            </div>
+          </div>
+        }
+        <!-- Error -->
+        @if (status?.status === 'error') {
+          <div class="error-box">{{ status!.error }}</div>
+        }
+      </section>
+      <!-- RIGHT: PDF viewer + Chat editor -->
+      <section class="panel pdf-panel">
+        <div class="pdf-header">
+          <h2 class="panel-title">
+            @if (activePdfUrl) {
+              <span>Resume Preview</span>
+            }
+            @if (showTemplatePdf) {
+              <span>Template Preview</span>
+            }
+            @if (!activePdfUrl && !showTemplatePdf) {
+              <span>Preview</span>
+            }
+          </h2>
+          @if (activePdfUrl) {
+            <button class="btn-download" (click)="download()">↓ Download PDF</button>
+          }
+        </div>
+        <!-- PDF iframe area -->
+        <div class="pdf-frame-wrap">
+          @if (activePdfUrl) {
+            <iframe [src]="activePdfUrl" class="pdf-frame" title="Resume Preview"></iframe>
+          }
+          @if (showTemplatePdf) {
+            <iframe [src]="templateUrl" class="pdf-frame" title="Template Preview"></iframe>
+          }
+          @if (!activePdfUrl && !showTemplatePdf) {
+            <div class="pdf-empty">
+              <div class="empty-icon">📄</div>
+              <p>Your tailored resume will appear here.</p>
+              <p class="empty-hint">
+                Paste a job description and click <strong>Tailor My Resume</strong>.
+              </p>
+              @if (!isGenerating) {
+                <p class="empty-hint">
+                  Or click <strong>View Template</strong> above to preview your base resume.
+                </p>
+              }
+            </div>
+          }
+          <!-- Generating overlay -->
+          @if (isGenerating && !activePdfUrl) {
+            <div class="pdf-generating-overlay">
+              <div class="gen-overlay-inner">
+                <div class="gen-spinner"></div>
+                <p class="gen-label">AI is tailoring your resume…</p>
+                <p class="gen-sub">
+                  Reading your LaTeX → analysing JD → rewriting sections → compiling PDF
+                </p>
+                <p class="gen-time">This usually takes 45–90 seconds</p>
               </div>
             </div>
-          </div>
-
-          <div *ngIf="isChatBusy" class="chat-msg chat-msg--bot">
-            <div class="chat-bubble chat-bubble--loading">
-              <span class="spinner"></span>
-              {{ chatState === 'planning' ? 'Analysing your request…' : 'Applying changes and compiling…' }}
+          }
+        </div>
+        <!-- ── Chat editor ── -->
+        @if (activePdfUrl) {
+          <div class="chat-panel">
+            <div class="chat-header">
+              <span class="chat-title">Edit via Chat</span>
+              <button
+                class="btn-undo-chat"
+                (click)="undoChat()"
+                [disabled]="chatState !== 'idle'"
+                title="Undo last chat change"
+              >
+                ↩ Undo
+              </button>
+            </div>
+            <div class="chat-messages" #chatScroll>
+              @if (chatMessages.length === 0) {
+                <div class="chat-hint">
+                  Tell me what to change — e.g. "make it 2 pages", "remove SCQA project", "increase
+                  font size"
+                </div>
+              }
+              @for (msg of chatMessages; track msg) {
+                <div
+                  class="chat-msg"
+                  [class.chat-msg--user]="msg.role === 'user'"
+                  [class.chat-msg--plan]="msg.role === 'plan'"
+                  [class.chat-msg--bot]="msg.role === 'bot'"
+                  [class.chat-msg--error]="msg.role === 'error'"
+                >
+                  <div class="chat-bubble">
+                    @if (msg.role === 'plan') {
+                      <div class="plan-label">Here's the plan</div>
+                    }
+                    <p class="chat-text">{{ msg.text }}</p>
+                    @if (msg.role === 'plan' && msg.changesPreview?.length) {
+                      <ul class="changes-list">
+                        @for (c of msg.changesPreview; track c) {
+                          <li>{{ c }}</li>
+                        }
+                      </ul>
+                    }
+                    @if (msg.role === 'plan' && chatState === 'awaiting_confirmation') {
+                      <div class="confirm-row">
+                        <button class="btn-confirm" (click)="confirmPlan()">
+                          Yes, apply changes
+                        </button>
+                        <button class="btn-cancel-plan" (click)="cancelPlan()">No, cancel</button>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+              @if (isChatBusy) {
+                <div class="chat-msg chat-msg--bot">
+                  <div class="chat-bubble chat-bubble--loading">
+                    <span class="spinner"></span>
+                    {{
+                      chatState === 'planning'
+                        ? 'Analysing your request…'
+                        : 'Applying changes and compiling…'
+                    }}
+                  </div>
+                </div>
+              }
+            </div>
+            <div class="chat-input-row">
+              <input
+                class="chat-input"
+                [(ngModel)]="chatInput"
+                (keydown.enter)="sendChat()"
+                placeholder="Describe the change you want…"
+                [disabled]="chatState !== 'idle'"
+              />
+              <button
+                class="btn-send"
+                (click)="sendChat()"
+                [disabled]="!chatInput.trim() || chatState !== 'idle'"
+              >
+                Send
+              </button>
             </div>
           </div>
-        </div>
-
-        <div class="chat-input-row">
-          <input class="chat-input" [(ngModel)]="chatInput"
-                 (keydown.enter)="sendChat()"
-                 placeholder="Describe the change you want…"
-                 [disabled]="chatState !== 'idle'">
-          <button class="btn-send" (click)="sendChat()"
-                  [disabled]="!chatInput.trim() || chatState !== 'idle'">Send</button>
-        </div>
-      </div>
-
-      <!-- Chat prompt when no PDF yet -->
-      <div class="chat-unavailable" *ngIf="!activePdfUrl && !isGenerating && !showTemplatePdf">
-        <span>Chat editor and Boost appear here after generating a resume.</span>
-      </div>
-
-    </section>
-  </main>
+        }
+        <!-- Chat prompt when no PDF yet -->
+        @if (!activePdfUrl && !isGenerating && !showTemplatePdf) {
+          <div class="chat-unavailable">
+            <span>Chat editor and Boost appear here after generating a resume.</span>
+          </div>
+        }
+      </section>
+    </main>
+  }
 
   <!-- ══════════════════════════════════════════════════ -->
   <!--  TAB: Resume Editor                               -->
   <!-- ══════════════════════════════════════════════════ -->
-  <main class="layout editor-layout" *ngIf="activeTab === 'edit-resume'">
-
-    <!-- Markdown textarea -->
-    <section class="panel md-panel">
-      <div class="md-panel-header">
-        <h2 class="panel-title">Resume Content</h2>
-        <span class="unsaved-badge" *ngIf="mdDirty && editorState === 'editing'">● Unsaved changes</span>
-        <span class="saved-badge"   *ngIf="!mdDirty && editorState === 'editing'">✓ Saved</span>
-      </div>
-
-      <!-- Loading skeleton -->
-      <div *ngIf="editorState === 'loading'" class="md-loading-block">
-        <div class="md-loading-icon">
-          <span class="spinner md-spinner"></span>
+  @if (activeTab === 'edit-resume') {
+    <main class="layout editor-layout">
+      <!-- Markdown textarea -->
+      <section class="panel md-panel">
+        <div class="md-panel-header">
+          <h2 class="panel-title">Resume Content</h2>
+          @if (mdDirty && editorState === 'editing') {
+            <span class="unsaved-badge">● Unsaved changes</span>
+          }
+          @if (!mdDirty && editorState === 'editing') {
+            <span class="saved-badge">✓ Saved</span>
+          }
         </div>
-        <p class="md-loading-title">Loading resume content…</p>
-        <p class="md-loading-sub">
-          First time: Claude is converting your LaTeX to Markdown (~30–60 s).
-          Subsequent opens are instant.
-        </p>
-        <div class="md-skeleton">
-          <div class="sk-line sk-line--title"></div>
-          <div class="sk-line"></div>
-          <div class="sk-line sk-line--short"></div>
-          <div class="sk-line"></div>
-          <div class="sk-line sk-line--medium"></div>
-          <div class="sk-line sk-line--short"></div>
-        </div>
-      </div>
+        <!-- Loading skeleton -->
+        @if (editorState === 'loading') {
+          <div class="md-loading-block">
+            <div class="md-loading-icon">
+              <span class="spinner md-spinner"></span>
+            </div>
+            <p class="md-loading-title">Loading resume content…</p>
+            <p class="md-loading-sub">
+              First time: Claude is converting your LaTeX to Markdown (~30–60 s). Subsequent opens
+              are instant.
+            </p>
+            <div class="md-skeleton">
+              <div class="sk-line sk-line--title"></div>
+              <div class="sk-line"></div>
+              <div class="sk-line sk-line--short"></div>
+              <div class="sk-line"></div>
+              <div class="sk-line sk-line--medium"></div>
+              <div class="sk-line sk-line--short"></div>
+            </div>
+          </div>
+        }
+        @if (editorState !== 'loading' && editorState !== 'error') {
+          <textarea
+            class="md-textarea"
+            [(ngModel)]="mdContent"
+            spellcheck="false"
+            placeholder="Resume content will load here…"
+          ></textarea>
+        }
+        @if (editorState === 'error') {
+          <div class="error-box">{{ editorError }}</div>
+        }
+      </section>
+      <!-- Actions sidebar -->
+      <section class="panel editor-actions-panel">
+        <h2 class="panel-title">Resume Editor</h2>
+        <!-- Editing state -->
+        @if (editorState === 'editing' || editorState === 'error') {
+          <div class="action-block">
+            <p class="action-hint">
+              Edit the Markdown on the left. Use headings, bullets, and
+              <code>**Tech:**</code> lines. Save your draft, then sync it to rebuild the LaTeX
+              resume.
+            </p>
+            <button class="btn-primary action-btn" (click)="saveMd()" [disabled]="!mdDirty">
+              Save Draft
+            </button>
+            @if (!mdDirty && editorState === 'editing') {
+              <p class="action-hint-small">Make edits above to enable save.</p>
+            }
+            <button class="btn-secondary action-btn" (click)="discardMd()" [disabled]="!mdDirty">
+              Discard Changes
+            </button>
+            <button class="btn-secondary action-btn" (click)="setTab('generate')">
+              ← Back to Generator
+            </button>
+          </div>
+        }
+        <!-- Loading state -->
+        @if (editorState === 'loading') {
+          <div class="action-block">
+            <p class="action-hint">Generating Markdown from your LaTeX resume…</p>
+            <div class="action-skeleton">
+              <div class="sk-btn"></div>
+              <div class="sk-btn sk-btn--secondary"></div>
+            </div>
+          </div>
+        }
+        <!-- Saving -->
+        @if (editorState === 'saving') {
+          <div class="action-block">
+            <div class="status-msg"><span class="spinner"></span> Saving draft…</div>
+          </div>
+        }
+        <!-- Saved — awaiting sync -->
+        @if (editorState === 'saved') {
+          <div class="action-block">
+            <div class="status-msg status-msg--ok">✓ Draft saved to resume-content.md</div>
+            <p class="action-hint">
+              Sync will convert your Markdown to LaTeX and recompile the resume template. This takes
+              ~60 s.
+            </p>
+            <button class="btn-primary action-btn" (click)="syncMd()">
+              Sync with Resume Template
+            </button>
+            <button class="btn-secondary action-btn" (click)="discardMd()">Keep Editing</button>
+          </div>
+        }
+        <!-- Syncing -->
+        @if (editorState === 'syncing') {
+          <div class="action-block">
+            <div class="status-msg"><span class="spinner"></span> Converting to LaTeX…</div>
+            <p class="action-hint">Claude is regenerating the LaTeX body. This takes ~60 s.</p>
+            <div class="sync-steps">
+              <div class="sync-step">1. Convert Markdown → LaTeX body</div>
+              <div class="sync-step">2. Stitch original preamble + macros back in</div>
+              <div class="sync-step">3. Compile PDF with pdflatex</div>
+            </div>
+          </div>
+        }
+        <!-- Synced -->
+        @if (editorState === 'synced') {
+          <div class="action-block">
+            <div class="status-msg status-msg--ok">✓ Resume template updated!</div>
+            @if (editorPdfUrl) {
+              <button class="btn-download action-btn" (click)="downloadEditor()">
+                ↓ Download Updated PDF
+              </button>
+            }
+            @if (editorPdfUrl) {
+              <iframe
+                [src]="editorPdfUrl"
+                class="editor-pdf-preview"
+                title="Updated Resume"
+              ></iframe>
+            }
+            <button class="btn-secondary action-btn" (click)="setTab('generate')">
+              Back to Generator
+            </button>
+            <button class="btn-secondary action-btn" (click)="discardMd()">Keep Editing</button>
+          </div>
+        }
+      </section>
+    </main>
+  }
 
-      <textarea *ngIf="editorState !== 'loading' && editorState !== 'error'"
-                class="md-textarea"
-                [(ngModel)]="mdContent"
-                spellcheck="false"
-                placeholder="Resume content will load here…"></textarea>
-
-      <div class="error-box" *ngIf="editorState === 'error'">{{ editorError }}</div>
-    </section>
-
-    <!-- Actions sidebar -->
-    <section class="panel editor-actions-panel">
-      <h2 class="panel-title">Resume Editor</h2>
-
-      <!-- Editing state -->
-      <div *ngIf="editorState === 'editing' || editorState === 'error'" class="action-block">
-        <p class="action-hint">
-          Edit the Markdown on the left. Use headings, bullets, and <code>**Tech:**</code> lines.
-          Save your draft, then sync it to rebuild the LaTeX resume.
-        </p>
-
-        <button class="btn-primary action-btn" (click)="saveMd()" [disabled]="!mdDirty">
-          Save Draft
-        </button>
-        <p class="action-hint-small" *ngIf="!mdDirty && editorState === 'editing'">
-          Make edits above to enable save.
-        </p>
-
-        <button class="btn-secondary action-btn" (click)="discardMd()" [disabled]="!mdDirty">
-          Discard Changes
-        </button>
-      </div>
-
-      <!-- Loading state -->
-      <div *ngIf="editorState === 'loading'" class="action-block">
-        <p class="action-hint">Generating Markdown from your LaTeX resume…</p>
-        <div class="action-skeleton">
-          <div class="sk-btn"></div>
-          <div class="sk-btn sk-btn--secondary"></div>
-        </div>
-      </div>
-
-      <!-- Saving -->
-      <div *ngIf="editorState === 'saving'" class="action-block">
-        <div class="status-msg"><span class="spinner"></span> Saving draft…</div>
-      </div>
-
-      <!-- Saved — awaiting sync -->
-      <div *ngIf="editorState === 'saved'" class="action-block">
-        <div class="status-msg status-msg--ok">✓ Draft saved to resume-content.md</div>
-        <p class="action-hint">
-          Sync will convert your Markdown to LaTeX and recompile the resume template.
-          This takes ~60 s.
-        </p>
-        <button class="btn-primary action-btn" (click)="syncMd()">
-          Sync with Resume Template
-        </button>
-        <button class="btn-secondary action-btn" (click)="discardMd()">
-          Keep Editing
-        </button>
-      </div>
-
-      <!-- Syncing -->
-      <div *ngIf="editorState === 'syncing'" class="action-block">
-        <div class="status-msg"><span class="spinner"></span> Converting to LaTeX…</div>
-        <p class="action-hint">Claude is regenerating the LaTeX body. This takes ~60 s.</p>
-        <div class="sync-steps">
-          <div class="sync-step">1. Convert Markdown → LaTeX body</div>
-          <div class="sync-step">2. Stitch original preamble + macros back in</div>
-          <div class="sync-step">3. Compile PDF with pdflatex</div>
-        </div>
-      </div>
-
-      <!-- Synced -->
-      <div *ngIf="editorState === 'synced'" class="action-block">
-        <div class="status-msg status-msg--ok">✓ Resume template updated!</div>
-        <button class="btn-download action-btn" (click)="downloadEditor()" *ngIf="editorPdfUrl">
-          ↓ Download Updated PDF
-        </button>
-        <iframe *ngIf="editorPdfUrl" [src]="editorPdfUrl"
-                class="editor-pdf-preview" title="Updated Resume"></iframe>
-        <button class="btn-secondary action-btn" (click)="setTab('generate')">
-          Back to Generator
-        </button>
-        <button class="btn-secondary action-btn" (click)="discardMd()">
-          Keep Editing
-        </button>
-      </div>
-
-    </section>
-
+  <!-- ══════════════════════════════════════════════════ -->
+  <!--  TAB: Email Generator                             -->
+  <!--  Kept permanently mounted (never @if-destroyed) so an in-progress -->
+  <!--  or completed generation survives switching to another tab and   -->
+  <!--  back — e.g. running a resume tailor and an email draft at once. -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <main class="layout email-generator-layout" [class.tab-hidden]="activeTab !== 'email-generator'">
+    <app-email-generator></app-email-generator>
   </main>
 
+  <!-- ══════════════════════════════════════════════════ -->
+  <!--  TAB: Import Resume                               -->
+  <!--  Kept permanently mounted so an in-progress upload/chat curation -->
+  <!--  survives switching to another tab and back.                    -->
+  <!-- ══════════════════════════════════════════════════ -->
+  <main class="layout import-resume-layout" [class.tab-hidden]="activeTab !== 'import-resume'">
+    <app-resume-import></app-resume-import>
+  </main>
+
+  <!-- ══════════════════════════════════════════════════ -->
+  <!--  TAB: Career Tools                                -->
+  <!-- ══════════════════════════════════════════════════ -->
+  @if (activeTab === 'personal-info') {
+    <main class="layout career-layout">
+      <app-personal-info></app-personal-info>
+    </main>
+  }
+  @if (activeTab === 'apply-later') {
+    <main class="layout career-layout">
+      <app-apply-later></app-apply-later>
+    </main>
+  }
+  @if (activeTab === 'post-archive') {
+    <main class="layout career-layout">
+      <app-post-archive></app-post-archive>
+    </main>
+  }
+  @if (activeTab === 'interview-prep') {
+    <main class="layout career-layout">
+      <app-interview-prep></app-interview-prep>
+    </main>
+  }
+  @if (activeTab === 'topic-mapping') {
+    <main class="layout career-layout">
+      <app-topic-mapping></app-topic-mapping>
+    </main>
+  }
+
+  <!-- ── History sidebar (closed / half / full) ── -->
+  @if (historySidebar !== 'closed') {
+    <!-- Mouse-only convenience dismiss; keyboard users close via Escape (handled in app.ts). -->
+    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+    <div class="history-backdrop" (click)="setHistorySidebarState('closed')"></div>
+  }
+  @if (historySidebar !== 'closed') {
+    <aside
+      class="history-sidebar"
+      [class.history-sidebar--half]="historySidebar === 'half'"
+      [class.history-sidebar--full]="historySidebar === 'full'"
+    >
+      <div class="history-header">
+        <h2 class="panel-title">Resume History</h2>
+        <div class="history-header-actions">
+          @if (historySidebar !== 'half') {
+            <button class="btn-ghost" (click)="setHistorySidebarState('half')">Half</button>
+          }
+          @if (historySidebar !== 'full') {
+            <button class="btn-ghost" (click)="setHistorySidebarState('full')">Full</button>
+          }
+          <button class="btn-ghost" (click)="setHistorySidebarState('closed')">✕</button>
+        </div>
+      </div>
+      <div class="history-body">
+        @if (historyLoading) {
+          <p class="action-hint">Loading…</p>
+        }
+        @if (!historyLoading && historyEntries.length === 0) {
+          <p class="action-hint">
+            No saved resumes yet. Generate one and click "Save to History" to start tracking your
+            applications.
+          </p>
+        }
+        @for (entry of historyEntries; track entry) {
+          <div class="history-entry">
+            <div class="history-entry-top">
+              <span class="history-entry-company">{{ entry.company_name }}</span>
+              @if (entry.ats_score !== null) {
+                <span
+                  class="history-entry-score"
+                  [style.color]="historyScoreColor(entry.ats_score)"
+                >
+                  {{ entry.ats_score }}%
+                </span>
+              }
+            </div>
+            @if (entry.job_title) {
+              <p class="history-entry-role">{{ entry.job_title }}</p>
+            }
+            @if (entry.verdict) {
+              <p class="history-entry-verdict">{{ entry.verdict }}</p>
+            }
+            @if (entry.job_url) {
+              <a class="history-entry-url" [href]="entry.job_url" target="_blank" rel="noopener">
+                {{ entry.job_url }}
+              </a>
+            }
+            <div class="history-entry-meta">
+              @if (entry.applied_date) {
+                <span>Applied {{ entry.applied_date }}</span>
+              }
+              <span>Saved {{ entry.created_at * 1000 | date: 'MMM d, y' }}</span>
+            </div>
+            <button class="btn-ghost history-entry-view" (click)="viewHistoryPdf(entry)">
+              View PDF
+            </button>
+          </div>
+        }
+      </div>
+    </aside>
+  }
+
+  <!-- ── Boost keyword checklist modal ── -->
+  @if (showBoostChecklist) {
+    <!-- Mouse-only convenience dismiss; keyboard users close via Escape (handled in app.ts). -->
+    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+    <div class="modal-overlay" (click)="cancelBoostChecklist()">
+      <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+      <div class="modal-card boost-checklist-card" (click)="$event.stopPropagation()">
+        <h3 class="modal-title">Which of these do you actually have?</h3>
+        <p class="modal-hint">
+          Only checked keywords get woven into your resume — this keeps the boost honest
+          instead of claiming skills you don't have.
+        </p>
+
+        <div class="boost-checklist-list">
+          @for (c of boostCandidates; track c.keyword) {
+            <label class="boost-checklist-row">
+              <input type="checkbox" [(ngModel)]="c.checked" />
+              <span>{{ c.keyword }}</span>
+              <span class="boost-checklist-tag" [class.boost-checklist-tag--required]="c.required">
+                {{ c.required ? 'Required' : 'Preferred' }}
+              </span>
+            </label>
+          }
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-secondary action-btn" (click)="cancelBoostChecklist()">Cancel</button>
+          <button
+            class="btn-primary action-btn"
+            [disabled]="boostSelectedCount === 0"
+            (click)="confirmBoostSelection()"
+          >
+            Weave in {{ boostSelectedCount }} keyword{{ boostSelectedCount === 1 ? '' : 's' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ── Add resume modal ── -->
+  @if (showAddResumeModal) {
+    <!-- Mouse-only convenience dismiss; keyboard users close via Escape (handled in app.ts). -->
+    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+    <div class="modal-overlay" (click)="cancelAddResumeModal()">
+      <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <h3 class="modal-title">Add another resume</h3>
+        <p class="modal-hint">
+          Upload a resume — your own alternate version, or someone else's. PDF, Word, and .tex
+          are all supported. Every feature (tailoring, chat editing, ATS scoring, email drafts,
+          career tools) works independently per resume.
+        </p>
+        @if (addResumeError) {
+          <div class="auth-error">{{ addResumeError }}</div>
+        }
+        @if (addResumeSuccess) {
+          <div class="auth-success">✓ Added — this is now your active resume.</div>
+        }
+        <div class="auth-field">
+          <label for="resume-add-label">Label *</label>
+          <input
+            id="resume-add-label"
+            type="text"
+            class="modal-input"
+            [(ngModel)]="newResumeLabel"
+            placeholder="e.g. Rahul's Resume"
+            [disabled]="addResumeSaving || addResumeSuccess"
+          />
+        </div>
+        <div class="auth-field">
+          <label for="resume-add-owner">Owner name (optional)</label>
+          <input
+            id="resume-add-owner"
+            type="text"
+            class="modal-input"
+            [(ngModel)]="newResumeOwner"
+            placeholder="e.g. Rahul Sharma"
+          />
+        </div>
+        <div class="auth-field">
+          <label for="resume-add-file">Resume file *</label>
+          <input
+            id="resume-add-file"
+            type="file"
+            accept=".tex,.pdf,.docx,.txt,.md"
+            (change)="onResumeFileSelected($event)"
+            [disabled]="addResumeSaving || addResumeSuccess"
+          />
+        </div>
+        @if (addResumeSaving) {
+          <p class="modal-hint">
+            <span class="spinner-label">
+              <span class="spinner"></span>
+              @if (newResumeFile && !newResumeFile.name.toLowerCase().endsWith('.tex')) {
+                <span
+                  >Reading the file and having Claude rebuild it into this app's LaTeX format —
+                  usually 20–60s, longer for long resumes.</span
+                >
+              } @else {
+                <span>Saving…</span>
+              }
+            </span>
+          </p>
+        }
+        <div class="modal-actions">
+          @if (!addResumeSuccess) {
+            <button class="btn-secondary action-btn" (click)="cancelAddResumeModal()" [disabled]="addResumeSaving">
+              Cancel
+            </button>
+            <button
+              class="btn-primary action-btn"
+              [disabled]="!newResumeLabel.trim() || !newResumeFile || addResumeSaving"
+              (click)="confirmAddResume()"
+            >
+              @if (addResumeSaving) {
+                <span class="spinner-label"><span class="spinner"></span> Adding…</span>
+              } @else {
+                <span>Add Resume</span>
+              }
+            </button>
+          } @else {
+            <button class="btn-primary action-btn" (click)="cancelAddResumeModal()">Done</button>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ── Download filename modal ── -->
+  @if (showDownloadModal) {
+    <!-- Mouse-only convenience dismiss; keyboard users close via Escape (handled in app.ts). -->
+    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+    <div class="modal-overlay" (click)="cancelDownload()">
+      <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <h3 class="modal-title">Download resume</h3>
+        <p class="modal-hint">Choose a filename (saved as .pdf)</p>
+        <input
+          #downloadInput
+          class="modal-input"
+          type="text"
+          [(ngModel)]="downloadFilename"
+          (keyup.enter)="confirmDownload()"
+        />
+        <div class="modal-actions">
+          <button class="btn-secondary action-btn" (click)="cancelDownload()">Cancel</button>
+          <button class="btn-primary action-btn" (click)="confirmDownload()">Download</button>
+        </div>
+      </div>
+    </div>
+  }
 </div>

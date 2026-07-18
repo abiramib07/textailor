@@ -1,5 +1,5 @@
-import { Component, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ChangeDetectorRef, inject } from '@angular/core';
+
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -7,21 +7,27 @@ import { AuthService } from '../auth.service';
 @Component({
   selector: 'app-signup',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink],
   templateUrl: './signup.html',
   styleUrl: '../auth-shared.scss',
 })
 export class SignupComponent {
+  private auth = inject(AuthService);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
   name = '';
   mobile_number = '';
   email = '';
   error = '';
   loading = false;
 
-  constructor(private auth: AuthService, private router: Router, private cdr: ChangeDetectorRef) {}
-
   get valid(): boolean {
-    return this.name.trim().length > 0 && this.mobile_number.trim().length > 0 && this.email.trim().length > 0;
+    return (
+      this.name.trim().length > 0 &&
+      this.mobile_number.trim().length > 0 &&
+      this.email.trim().length > 0
+    );
   }
 
   submit(): void {

@@ -1,5 +1,10 @@
+"""SQLite schema and connection management for the auth module: `users`,
+`otp_requests`, and `sessions` tables, one connection per thread.
+"""
+
 import sqlite3
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 
 from . import config
@@ -45,6 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
 
 def get_conn() -> sqlite3.Connection:
+    """Return this thread's SQLite connection, opening one on first use."""
     conn = getattr(_local, "conn", None)
     if conn is None:
         conn = sqlite3.connect(config.DB_PATH)
@@ -54,14 +60,16 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
-def init_db():
+def init_db() -> None:
+    """Create the auth tables if they don't already exist."""
     conn = get_conn()
     conn.executescript(SCHEMA)
     conn.commit()
 
 
 @contextmanager
-def tx():
+def tx() -> Iterator[sqlite3.Connection]:
+    """Context manager that commits on success and rolls back on exception."""
     conn = get_conn()
     try:
         yield conn

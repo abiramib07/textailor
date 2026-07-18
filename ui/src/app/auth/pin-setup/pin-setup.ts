@@ -1,5 +1,5 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ChangeDetectorRef, inject } from '@angular/core';
+
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -7,18 +7,20 @@ import { AuthService } from '../auth.service';
 @Component({
   selector: 'app-pin-setup',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
   templateUrl: './pin-setup.html',
   styleUrl: '../auth-shared.scss',
 })
 export class PinSetupComponent implements OnInit {
+  private auth = inject(AuthService);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
   pin = '';
   confirmPin = '';
   error = '';
   loading = false;
   isReset = false;
-
-  constructor(private auth: AuthService, private router: Router, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     if (!this.auth.otpVerifiedToken || !this.auth.pendingPurpose) {
@@ -46,7 +48,7 @@ export class PinSetupComponent implements OnInit {
       next: () => {
         this.loading = false;
         this.auth.clearFlowState();
-        this.router.navigate(['/welcome']);
+        this.router.navigate(['/']);
       },
       error: (err) => {
         this.loading = false;

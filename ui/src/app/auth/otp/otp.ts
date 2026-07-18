@@ -1,5 +1,5 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ChangeDetectorRef, inject } from '@angular/core';
+
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -7,11 +7,15 @@ import { AuthService } from '../auth.service';
 @Component({
   selector: 'app-otp',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
   templateUrl: './otp.html',
   styleUrl: '../auth-shared.scss',
 })
 export class OtpComponent implements OnInit {
+  private auth = inject(AuthService);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
   otp = '';
   error = '';
   loading = false;
@@ -20,8 +24,6 @@ export class OtpComponent implements OnInit {
   mobile: string | null = null;
 
   private cooldownTimer: ReturnType<typeof setInterval> | null = null;
-
-  constructor(private auth: AuthService, private router: Router, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     if (!this.auth.pendingMobile || !this.auth.pendingPurpose) {
@@ -36,10 +38,14 @@ export class OtpComponent implements OnInit {
 
   get purposeLabel(): string {
     switch (this.auth.pendingPurpose) {
-      case 'signup': return 'Verify your mobile number';
-      case 'reset': return 'Reset your PIN';
-      case 'complete_profile': return 'Confirm your mobile number';
-      default: return 'Enter verification code';
+      case 'signup':
+        return 'Verify your mobile number';
+      case 'reset':
+        return 'Reset your PIN';
+      case 'complete_profile':
+        return 'Confirm your mobile number';
+      default:
+        return 'Enter verification code';
     }
   }
 
@@ -48,7 +54,8 @@ export class OtpComponent implements OnInit {
   }
 
   submit(): void {
-    if (!/^\d{6}$/.test(this.otp) || this.loading || !this.mobile || !this.auth.pendingPurpose) return;
+    if (!/^\d{6}$/.test(this.otp) || this.loading || !this.mobile || !this.auth.pendingPurpose)
+      return;
     this.loading = true;
     this.error = '';
 
@@ -61,7 +68,7 @@ export class OtpComponent implements OnInit {
           this.auth.completeMobile(res.otp_verified_token).subscribe({
             next: () => {
               this.auth.clearFlowState();
-              this.router.navigate(['/welcome']);
+              this.router.navigate(['/']);
             },
             error: (err) => {
               this.error = err?.error?.detail ?? 'Could not save mobile number.';
@@ -81,7 +88,8 @@ export class OtpComponent implements OnInit {
   }
 
   resend(): void {
-    if (this.resendCooldown > 0 || this.resendLoading || !this.mobile || !this.auth.pendingPurpose) return;
+    if (this.resendCooldown > 0 || this.resendLoading || !this.mobile || !this.auth.pendingPurpose)
+      return;
     this.resendLoading = true;
     this.error = '';
 

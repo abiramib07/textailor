@@ -3,24 +3,41 @@
     <h1 class="auth-title">{{ purposeLabel }}</h1>
     <p class="auth-subtitle">Enter the 6-digit code sent to {{ mobile }}</p>
 
-    <div class="auth-hint" *ngIf="devOtpHint">
-      Dev mode — no SMS gateway configured. Your code is <strong>{{ devOtpHint }}</strong>.
+    @if (devOtpHint) {
+      <div class="auth-hint">
+        Dev mode — no SMS gateway configured. Your code is <strong>{{ devOtpHint }}</strong
+        >.
+      </div>
+    }
+
+    @if (error) {
+      <div class="auth-error">{{ error }}</div>
+    }
+
+    <div class="auth-field auth-pin-input">
+      <label for="otp-code">Verification code</label>
+      <input
+        id="otp-code"
+        type="text"
+        [(ngModel)]="otp"
+        maxlength="6"
+        inputmode="numeric"
+        placeholder="••••••"
+        (keyup.enter)="submit()"
+      />
     </div>
-
-    <div class="auth-error" *ngIf="error">{{ error }}</div>
-
-    <label class="auth-field auth-pin-input">
-      <label>Verification code</label>
-      <input type="text" [(ngModel)]="otp" maxlength="6" inputmode="numeric" placeholder="••••••" (keyup.enter)="submit()" />
-    </label>
 
     <button class="auth-btn auth-btn-primary" [disabled]="loading" (click)="submit()">
       {{ loading ? 'Verifying…' : 'Verify' }}
     </button>
 
     <div class="auth-links">
-      <a *ngIf="resendCooldown === 0" (click)="resend()">{{ resendLoading ? 'Sending…' : 'Resend code' }}</a>
-      <span *ngIf="resendCooldown > 0">Resend available in {{ resendCooldown }}s</span>
+      @if (resendCooldown === 0) {
+        <button type="button" (click)="resend()">{{ resendLoading ? 'Sending…' : 'Resend code' }}</button>
+      }
+      @if (resendCooldown > 0) {
+        <span>Resend available in {{ resendCooldown }}s</span>
+      }
     </div>
   </div>
 </div>

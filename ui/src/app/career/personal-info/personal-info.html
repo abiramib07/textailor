@@ -1,0 +1,79 @@
+<div class="pi-page">
+  <div class="pi-card">
+    <h2 class="pi-title">Personal Info Clipboard</h2>
+    <p class="pi-hint">
+      Fill these once — copy-paste them into application forms instead of digging through your
+      resume or LinkedIn every time.
+    </p>
+
+    @for (f of suggestedFields; track f.key) {
+      <div class="pi-field">
+        <label [for]="'pi-' + f.key">{{ f.label }}</label>
+        <div class="pi-row">
+          @if (f.multiline) {
+            <textarea
+              [id]="'pi-' + f.key"
+              [(ngModel)]="values[f.key]"
+              (blur)="save(f.key)"
+              rows="3"
+            ></textarea>
+          }
+          @if (!f.multiline) {
+            <input
+              [id]="'pi-' + f.key"
+              type="text"
+              [(ngModel)]="values[f.key]"
+              (blur)="save(f.key)"
+            />
+          }
+          <button
+            type="button"
+            class="pi-copy-btn"
+            [class.pi-copy-btn--copied]="copiedKey === f.key"
+            (click)="copy(f.key)"
+          >
+            {{ copiedKey === f.key ? '✓' : 'Copy' }}
+          </button>
+        </div>
+      </div>
+    }
+
+    @if (customEntries.length) {
+      <div class="pi-divider">Custom fields</div>
+      @for (e of customEntries; track e.key) {
+        <div class="pi-field">
+          <label [for]="'pi-custom-' + e.key">{{ e.key }}</label>
+          <div class="pi-row">
+            <input
+              [id]="'pi-custom-' + e.key"
+              type="text"
+              [(ngModel)]="values[e.key]"
+              (blur)="save(e.key)"
+            />
+            <button
+              type="button"
+              class="pi-copy-btn"
+              [class.pi-copy-btn--copied]="copiedKey === e.key"
+              (click)="copy(e.key)"
+            >
+              {{ copiedKey === e.key ? '✓' : 'Copy' }}
+            </button>
+            <button type="button" class="pi-remove-btn" (click)="removeCustomField(e.key)">✕</button>
+          </div>
+        </div>
+      }
+    }
+
+    <div class="pi-divider">Add a custom field</div>
+    <div class="pi-add-row">
+      <input type="text" placeholder="Field name (e.g. Twitter)" [(ngModel)]="newFieldName" />
+      <input
+        type="text"
+        placeholder="Value"
+        [(ngModel)]="newFieldValue"
+        (keyup.enter)="addCustomField()"
+      />
+      <button type="button" class="pi-add-btn" (click)="addCustomField()">+ Add</button>
+    </div>
+  </div>
+</div>

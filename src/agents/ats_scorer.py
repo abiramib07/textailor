@@ -1,8 +1,14 @@
+"""ATS scorer — computes a keyword-match score for the tailored resume
+against the recruiter's gap analysis and writes a plain-text report.
+"""
+
 import re
+import sys
 from datetime import datetime
 
 
 def _keyword_present(keyword: str, text: str) -> bool:
+    """Case-insensitive substring check for one keyword in the resume text."""
     return bool(re.search(re.escape(keyword), text, re.IGNORECASE))
 
 
@@ -47,6 +53,8 @@ def score(recruiter_result: dict, rewritten_plain_text: str) -> dict:
 
 
 def write_report(score_result: dict, output_path: str) -> None:
+    """Write the ATS score breakdown to a plain-text report file and echo it
+    to the console (degrading gracefully on non-UTF-8 console codepages)."""
     lines = [
         f"TexTailor ATS Report — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         f"Role: {score_result['job_title']}",
@@ -81,4 +89,14 @@ def write_report(score_result: dict, output_path: str) -> None:
     report_text = "\n".join(lines)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(report_text)
-    print(report_text)
+    try:
+        print(report_text)
+    except UnicodeEncodeError:
+        # Windows console codepages (e.g. cp1252) can't encode ✓/✗ — the file
+        # write above already has the real UTF-8 content, so just degrade
+        # the console echo instead of crashing the pipeline over a print().
+        print(
+            report_text.encode(sys.stdout.encoding or "ascii", errors="replace").decode(
+                sys.stdout.encoding or "ascii"
+            )
+        )

@@ -141,13 +141,19 @@
   gap: 8px;
 }
 
-.auth-links a {
+.auth-links a,
+.auth-links button {
   color: #818cf8;
   cursor: pointer;
   text-decoration: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
 }
 
-.auth-links a:hover {
+.auth-links a:hover,
+.auth-links button:hover {
   text-decoration: underline;
 }
 

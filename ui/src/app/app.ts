@@ -1,10 +1,36 @@
-import { Component, OnDestroy, OnInit, ChangeDetectorRef, ViewChild, ElementRef } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  OnInit,
+  ChangeDetectorRef,
+  ViewChild,
+  ElementRef,
+  HostListener,
+  inject,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
-import { ResumeService, TaskStatus, PipelineStep, ScoreReport } from './resume.service';
+import {
+  ResumeService,
+  TaskStatus,
+  PipelineStep,
+  ScoreReport,
+  HistoryEntry,
+  VerifierResult,
+  VerifierKeyword,
+  ExplainResult,
+} from './resume.service';
 import { AuthService, UserProfile } from './auth/auth.service';
+import { EmailGeneratorComponent } from './email-generator/email-generator';
+import { ResumeImportComponent } from './resume-import/resume-import';
+import { PersonalInfoComponent } from './career/personal-info/personal-info';
+import { ApplyLaterComponent } from './career/apply-later/apply-later';
+import { PostArchiveComponent } from './career/post-archive/post-archive';
+import { InterviewPrepComponent } from './career/interview-prep/interview-prep';
+import { TopicMappingComponent } from './career/topic-mapping/topic-mapping';
+import { ResumesService, ResumeIdentity } from './resumes/resumes.service';
 
 const STEP_NAMES = [
   'Parse resume',
@@ -15,7 +41,7 @@ const STEP_NAMES = [
 ];
 
 function pendingSteps(): PipelineStep[] {
-  return STEP_NAMES.map(name => ({ name, status: 'pending', detail: '', elapsed: null }));
+  return STEP_NAMES.map((name) => ({ name, status: 'pending', detail: '', elapsed: null }));
 }
 
 export interface ChatMessage {
@@ -25,24 +51,185 @@ export interface ChatMessage {
   changesPreview?: string[];
 }
 
-type Tab = 'generate' | 'edit-resume';
-type EditorState = 'idle' | 'loading' | 'editing' | 'saving' | 'saved' | 'syncing' | 'synced' | 'error';
+type Tab =
+  | 'generate'
+  | 'edit-resume'
+  | 'import-resume'
+  | 'email-generator'
+  | 'personal-info'
+  | 'apply-later'
+  | 'post-archive'
+  | 'interview-prep'
+  | 'topic-mapping';
+type EditorState =
+  | 'idle'
+  | 'loading'
+  | 'editing'
+  | 'saving'
+  | 'saved'
+  | 'syncing'
+  | 'synced'
+  | 'error';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    EmailGeneratorComponent,
+    ResumeImportComponent,
+    PersonalInfoComponent,
+    ApplyLaterComponent,
+    PostArchiveComponent,
+    InterviewPrepComponent,
+    TopicMappingComponent,
+  ],
   templateUrl: './app.html',
-  styleUrl: './app.scss'
+  styleUrl: './app.scss',
 })
 export class App implements OnInit, OnDestroy {
+  private svc = inject(ResumeService);
+  private sanitizer = inject(DomSanitizer);
+  private cdr = inject(ChangeDetectorRef);
+  private authSvc = inject(AuthService);
+  private router = inject(Router);
+  private resumesSvc = inject(ResumesService);
 
   // ── Auth (session, if any) ──────────────────────────────────────
   authUser: UserProfile | null = null;
   authChecked = false;
 
+  // ── Resume identity switcher ──────────────────────────────────────
+  showResumeMenu = false;
+  showAddResumeModal = false;
+  newResumeLabel = '';
+  newResumeOwner = '';
+  newResumeFile: File | null = null;
+  addResumeSaving = false;
+  addResumeError = '';
+  addResumeSuccess = false;
+
+  get resumes(): ResumeIdentity[] {
+    return this.resumesSvc.resumes();
+  }
+
+  get activeResumeId(): string | null {
+    return this.resumesSvc.activeResumeId();
+  }
+
+  get activeResumeLabel(): string {
+    return this.resumesSvc.activeResume()?.label ?? 'My Resume';
+  }
+
+  toggleResumeMenu() {
+    this.showResumeMenu = !this.showResumeMenu;
+    this.cdr.detectChanges();
+  }
+
+  selectResume(id: string) {
+    this.showResumeMenu = false;
+    if (id === this.activeResumeId) {
+      this.cdr.detectChanges();
+      return;
+    }
+    this.resumesSvc.setActive(id);
+    this._refreshTemplateUrl();
+    if (this.historySidebar !== 'closed') this.loadHistory();
+    this.cdr.detectChanges();
+  }
+
+  openAddResumeModal() {
+    this.showResumeMenu = false;
+    this.showAddResumeModal = true;
+    this.newResumeLabel = '';
+    this.newResumeOwner = '';
+    this.newResumeFile = null;
+    this.addResumeError = '';
+    this.addResumeSuccess = false;
+    this.cdr.detectChanges();
+  }
+
+  cancelAddResumeModal() {
+    this.showAddResumeModal = false;
+    this.addResumeSuccess = false;
+  }
+
+  onResumeFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.newResumeFile = input.files?.[0] ?? null;
+  }
+
+  confirmAddResume() {
+    if (!this.newResumeLabel.trim() || !this.newResumeFile || this.addResumeSaving) return;
+    this.addResumeSaving = true;
+    this.addResumeError = '';
+    this.resumesSvc
+      .create(this.newResumeLabel.trim(), this.newResumeOwner.trim(), this.newResumeFile)
+      .subscribe({
+        next: () => {
+          this.addResumeSaving = false;
+          this.addResumeSuccess = true;
+          this._refreshTemplateUrl();
+          this.cdr.detectChanges();
+          setTimeout(() => {
+            this.showAddResumeModal = false;
+            this.addResumeSuccess = false;
+            this.cdr.detectChanges();
+          }, 1400);
+        },
+        error: (err) => {
+          this.addResumeSaving = false;
+          this.addResumeError = err?.error?.detail ?? 'Could not add this resume.';
+          this.cdr.detectChanges();
+        },
+      });
+  }
+
+  removeResume(id: string, event: Event) {
+    event.stopPropagation();
+    if (!confirm('Delete this resume identity and all of its saved data?')) return;
+    this.resumesSvc.remove(id).subscribe({
+      next: () => {
+        this._refreshTemplateUrl();
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  private _refreshTemplateUrl() {
+    this.templateUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.svc.templateUrl());
+  }
+
   // ── Tabs ────────────────────────────────────────────────────────
   activeTab: Tab = 'generate';
+  showCareerMenu = false;
+  careerTabs: { tab: Tab; label: string }[] = [
+    { tab: 'personal-info', label: 'Personal Info' },
+    { tab: 'apply-later', label: 'Apply Later' },
+    { tab: 'post-archive', label: 'LinkedIn Archive' },
+    { tab: 'interview-prep', label: 'Interview Prep' },
+    { tab: 'topic-mapping', label: 'Topic Mapping' },
+  ];
+
+  get isCareerTab(): boolean {
+    return this.careerTabs.some((c) => c.tab === this.activeTab);
+  }
+
+  get activeCareerLabel(): string {
+    return this.careerTabs.find((c) => c.tab === this.activeTab)?.label ?? 'Career Tools';
+  }
+
+  toggleCareerMenu() {
+    this.showCareerMenu = !this.showCareerMenu;
+    this.cdr.detectChanges();
+  }
+
+  selectCareerTab(tab: Tab) {
+    this.showCareerMenu = false;
+    this.setTab(tab);
+  }
 
   // ── Pipeline state ──────────────────────────────────────────────
   jd = '';
@@ -59,6 +246,9 @@ export class App implements OnInit, OnDestroy {
   // ── Report state ────────────────────────────────────────────────
   reportData: ScoreReport | null = null;
   showReport = false;
+  expandRequired = false;
+  expandPreferred = false;
+  expandVerifierBody = false;
 
   // ── Boost state ─────────────────────────────────────────────────
   isBoosting = false;
@@ -66,11 +256,37 @@ export class App implements OnInit, OnDestroy {
   boostPdfUrl: SafeResourceUrl | null = null;
   boostPdfRawUrl: string | null = null;
 
+  // ── Verifier state ──────────────────────────────────────────────
+  verifierResult: VerifierResult | null = null;
+  verifierLoading = false;
+  verifierError = '';
+  explainQuery = '';
+  explainResult: ExplainResult | null = null;
+  explainLoading = false;
+  explainError = '';
+
+  // ── History state ──────────────────────────────────────────────
+  historySidebar: 'closed' | 'half' | 'full' = 'closed';
+  historyEntries: HistoryEntry[] = [];
+  historyLoading = false;
+  historySaved = false;
+  showSaveHistoryForm = false;
+  saveHistoryCompany = '';
+  saveHistoryUrl = '';
+  saveHistoryAppliedDate = '';
+  saveHistorySaving = false;
+  saveHistoryError = '';
+
   // ── Chat state ──────────────────────────────────────────────────
   chatMessages: ChatMessage[] = [];
   chatInput = '';
   chatState: 'idle' | 'planning' | 'awaiting_confirmation' | 'executing' = 'idle';
-  pendingPlan: { planId: string; message: string; summary: string; changesPreview: string[] } | null = null;
+  pendingPlan: {
+    planId: string;
+    message: string;
+    summary: string;
+    changesPreview: string[];
+  } | null = null;
   chatPdfUrl: SafeResourceUrl | null = null;
   chatPdfRawUrl: string | null = null;
 
@@ -83,16 +299,15 @@ export class App implements OnInit, OnDestroy {
   editorError = '';
 
   @ViewChild('chatScroll') chatScrollEl!: ElementRef;
+  @ViewChild('downloadInput') downloadInputEl?: ElementRef<HTMLInputElement>;
 
   private _elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private _pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(
-    private svc: ResumeService,
-    private sanitizer: DomSanitizer,
-    private cdr: ChangeDetectorRef,
-    private authSvc: AuthService
-  ) {
+  constructor() {
+    const svc = this.svc;
+    const sanitizer = this.sanitizer;
+
     this.templateUrl = sanitizer.bypassSecurityTrustResourceUrl(svc.templateUrl());
   }
 
@@ -111,12 +326,22 @@ export class App implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       },
     });
+
+    this.resumesSvc.list().subscribe({
+      next: () => {
+        // The constructor built templateUrl before the active resume was
+        // known — refresh it now that resumesSvc has resolved one.
+        this._refreshTemplateUrl();
+        this.cdr.detectChanges();
+      },
+    });
   }
 
   logout() {
     this.authSvc.logout().subscribe(() => {
       this.authUser = null;
       this.cdr.detectChanges();
+      this.router.navigate(['/login']);
     });
   }
 
@@ -128,7 +353,7 @@ export class App implements OnInit, OnDestroy {
   // ── Tab navigation ──────────────────────────────────────────────
   setTab(tab: Tab) {
     if (tab === this.activeTab) return;
-    if (tab === 'generate' && this.mdDirty) {
+    if (this.activeTab === 'edit-resume' && this.mdDirty) {
       if (!confirm('You have unsaved changes in the editor. Leave without saving?')) return;
     }
     this.activeTab = tab;
@@ -157,11 +382,23 @@ export class App implements OnInit, OnDestroy {
     this.taskId = null;
     this.reportData = null;
     this.showReport = false;
+    this.expandRequired = false;
+    this.expandPreferred = false;
+    this.expandVerifierBody = false;
     this.boostScore = null;
     this.boostPdfUrl = null;
     this.boostPdfRawUrl = null;
+    this.showBoostChecklist = false;
+    this.boostCandidates = [];
     this.showTemplate = false;
     this.localSteps = pendingSteps();
+    this.historySaved = false;
+    this.showSaveHistoryForm = false;
+    this.saveHistoryError = '';
+    this.verifierResult = null;
+    this.verifierError = '';
+    this.explainResult = null;
+    this.explainQuery = '';
     this._startElapsedTimer();
     this.cdr.detectChanges();
 
@@ -170,7 +407,7 @@ export class App implements OnInit, OnDestroy {
         this.taskId = task_id;
         this._poll(task_id);
       },
-      error: () => this._finish()
+      error: () => this._finish(),
     });
   }
 
@@ -180,10 +417,207 @@ export class App implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
+  // ── Download filename modal ────────────────────────────────────
+  showDownloadModal = false;
+  downloadFilename = '';
+
   download() {
     const url = this.boostPdfRawUrl ?? this.chatPdfRawUrl ?? this.pdfRawUrl;
     if (!url) return;
-    this._blobDownload(url, 'resume_tailored.pdf');
+    this.downloadFilename = this._suggestedFilename();
+    this.showDownloadModal = true;
+    this.cdr.detectChanges();
+    setTimeout(() => this.downloadInputEl?.nativeElement.focus(), 0);
+  }
+
+  confirmDownload() {
+    const url = this.boostPdfRawUrl ?? this.chatPdfRawUrl ?? this.pdfRawUrl;
+    if (!url) return;
+    const name = this.downloadFilename.trim() || this._suggestedFilename();
+    this.showDownloadModal = false;
+    this._blobDownload(url, `${name}.pdf`);
+  }
+
+  cancelDownload() {
+    this.showDownloadModal = false;
+  }
+
+  // Keyboard equivalent for the mouse-only backdrop-click dismiss on the
+  // history sidebar and download modal.
+  @HostListener('document:keydown.escape')
+  onEscapeKey() {
+    if (this.showDownloadModal) {
+      this.cancelDownload();
+      this.cdr.detectChanges();
+    } else if (this.showAddResumeModal) {
+      this.cancelAddResumeModal();
+      this.cdr.detectChanges();
+    } else if (this.showBoostChecklist) {
+      this.cancelBoostChecklist();
+      this.cdr.detectChanges();
+    } else if (this.historySidebar !== 'closed') {
+      this.setHistorySidebarState('closed');
+    } else if (this.showCareerMenu) {
+      this.showCareerMenu = false;
+      this.cdr.detectChanges();
+    } else if (this.showResumeMenu) {
+      this.showResumeMenu = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  private _suggestedFilename(): string {
+    const roleDetail = this.status?.steps?.[1]?.detail ?? '';
+    const roleMatch = roleDetail.match(/Role:\s*([^·]+)/);
+    const role = roleMatch ? roleMatch[1].trim() : 'Resume_Tailored';
+    const safeRole = role
+      .replace(/[^\w\- ]/g, '')
+      .trim()
+      .replace(/\s+/g, '_');
+    const date = new Date().toISOString().slice(0, 10);
+    return `${safeRole || 'Resume_Tailored'}_${date}`;
+  }
+
+  // ── Resume history ──────────────────────────────────────────────
+  toggleHistorySidebar() {
+    if (this.historySidebar === 'closed') {
+      this.historySidebar = 'half';
+      this.loadHistory();
+    } else {
+      this.historySidebar = 'closed';
+    }
+    this.cdr.detectChanges();
+  }
+
+  setHistorySidebarState(state: 'closed' | 'half' | 'full') {
+    this.historySidebar = state;
+    this.cdr.detectChanges();
+  }
+
+  loadHistory() {
+    this.historyLoading = true;
+    this.svc.getHistory().subscribe({
+      next: ({ entries }) => {
+        this.historyEntries = entries;
+        this.historyLoading = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.historyLoading = false;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  openSaveHistoryForm() {
+    this.showSaveHistoryForm = true;
+    this.saveHistoryCompany = '';
+    this.saveHistoryUrl = '';
+    this.saveHistoryAppliedDate = '';
+    this.saveHistoryError = '';
+    this.cdr.detectChanges();
+  }
+
+  cancelSaveHistoryForm() {
+    this.showSaveHistoryForm = false;
+  }
+
+  confirmSaveHistory() {
+    if (!this.taskId || !this.saveHistoryCompany.trim() || this.saveHistorySaving) return;
+    this.saveHistorySaving = true;
+    this.saveHistoryError = '';
+
+    this.svc
+      .saveHistory(
+        this.taskId,
+        this.saveHistoryCompany.trim(),
+        this.saveHistoryUrl.trim(),
+        this.saveHistoryAppliedDate.trim(),
+      )
+      .subscribe({
+        next: ({ entry }) => {
+          this.historyEntries = [entry, ...this.historyEntries];
+          this.saveHistorySaving = false;
+          this.showSaveHistoryForm = false;
+          this.historySaved = true;
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          this.saveHistorySaving = false;
+          this.saveHistoryError = err?.error?.detail ?? 'Could not save to history.';
+          this.cdr.detectChanges();
+        },
+      });
+  }
+
+  viewHistoryPdf(entry: HistoryEntry) {
+    window.open(this.svc.historyPdfUrl(entry.id), '_blank');
+  }
+
+  historyScoreColor(score: number | null): string {
+    if (score === null) return '#6b7280';
+    if (score >= 90) return '#22c55e';
+    if (score >= 70) return '#f59e0b';
+    return '#ef4444';
+  }
+
+  // ── Verifier agent ──────────────────────────────────────────────
+  runVerifier() {
+    if (!this.taskId || this.verifierLoading) return;
+    this.verifierLoading = true;
+    this.verifierError = '';
+    this.expandVerifierBody = true;
+
+    this.svc.runVerifier(this.taskId).subscribe({
+      next: (result) => {
+        this.verifierResult = result;
+        this.verifierLoading = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.verifierLoading = false;
+        this.verifierError = err?.error?.detail ?? 'Verifier failed. Please try again.';
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  askExplain() {
+    if (!this.taskId || !this.explainQuery.trim() || this.explainLoading) return;
+    this.explainLoading = true;
+    this.explainError = '';
+    this.explainResult = null;
+
+    this.svc.explainKeyword(this.taskId, this.explainQuery.trim()).subscribe({
+      next: (result) => {
+        this.explainResult = result;
+        this.explainLoading = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.explainLoading = false;
+        this.explainError = err?.error?.detail ?? 'Could not look that up.';
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  verifierStatusLabel(status: string): string {
+    if (status === 'exact') return '✓ Found in resume';
+    if (status === 'semantic') return '≈ Implied, not literal';
+    return '✗ Not found';
+  }
+
+  get verifierExact(): VerifierKeyword[] {
+    return this.verifierResult?.keywords.filter((k) => k.status === 'exact') ?? [];
+  }
+
+  get verifierSemantic(): VerifierKeyword[] {
+    return this.verifierResult?.keywords.filter((k) => k.status === 'semantic') ?? [];
+  }
+
+  get verifierMissing(): VerifierKeyword[] {
+    return this.verifierResult?.keywords.filter((k) => k.status === 'missing') ?? [];
   }
 
   get displaySteps(): PipelineStep[] {
@@ -193,7 +627,7 @@ export class App implements OnInit, OnDestroy {
   get progressPct(): number {
     const steps = this.displaySteps;
     if (!steps.length) return 0;
-    const done = steps.filter(s => s.status === 'done').length;
+    const done = steps.filter((s) => s.status === 'done').length;
     return Math.round((done / steps.length) * 100);
   }
 
@@ -221,31 +655,81 @@ export class App implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
+  toggleRequired() {
+    this.expandRequired = !this.expandRequired;
+    this.cdr.detectChanges();
+  }
+
+  togglePreferred() {
+    this.expandPreferred = !this.expandPreferred;
+    this.cdr.detectChanges();
+  }
+
+  toggleVerifierBody() {
+    this.expandVerifierBody = !this.expandVerifierBody;
+    this.cdr.detectChanges();
+  }
+
   private _loadReport(taskId: string) {
     this.svc.getReport(taskId).subscribe({
-      next: report => {
+      next: (report) => {
         this.reportData = report;
         this.cdr.detectChanges();
       },
-      error: () => {}
+      // Report is supplementary to the score card, which already rendered —
+      // fail quietly rather than surface a second error for the same task.
+      error: () => undefined,
     });
   }
 
   // ── ATS Boost ───────────────────────────────────────────────────
-  boostAts() {
-    if (!this.taskId || this.isBoosting) return;
+  // Selecting which missing keywords to weave in (rather than boosting with
+  // all of them blindly) avoids claiming skills the user doesn't actually have.
+  showBoostChecklist = false;
+  boostCandidates: { keyword: string; required: boolean; checked: boolean }[] = [];
+
+  openBoostChecklist() {
+    if (!this.reportData) return;
+    this.boostCandidates = [
+      ...this.reportData.required_missing.map((keyword) => ({ keyword, required: true, checked: false })),
+      ...this.reportData.preferred_missing.map((keyword) => ({ keyword, required: false, checked: false })),
+    ];
+    this.showBoostChecklist = true;
+    this.cdr.detectChanges();
+  }
+
+  cancelBoostChecklist() {
+    this.showBoostChecklist = false;
+  }
+
+  get boostSelectedCount(): number {
+    return this.boostCandidates.filter((c) => c.checked).length;
+  }
+
+  confirmBoostSelection() {
+    const selected = this.boostCandidates.filter((c) => c.checked).map((c) => c.keyword);
+    this.showBoostChecklist = false;
+    this.boostAts(selected);
+  }
+
+  boostAts(selectedKeywords: string[]) {
+    if (!this.taskId || this.isBoosting || selectedKeywords.length === 0) return;
     this.isBoosting = true;
     this.cdr.detectChanges();
 
-    this.svc.boostAts(this.taskId).subscribe({
-      next: result => {
+    this.svc.boostAts(this.taskId, selectedKeywords).subscribe({
+      next: (result) => {
         this.boostScore = result.score;
         if (result.has_pdf && result.boost_id) {
           this.boostPdfRawUrl = this.svc.chatPdfUrl(result.boost_id);
           this.boostPdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.boostPdfRawUrl);
         }
         if (this.reportData) {
-          this.reportData = { ...this.reportData, overall_score: result.score, verdict: result.verdict };
+          this.reportData = {
+            ...this.reportData,
+            overall_score: result.score,
+            verdict: result.verdict,
+          };
         }
         this.isBoosting = false;
         this.cdr.detectChanges();
@@ -253,7 +737,7 @@ export class App implements OnInit, OnDestroy {
       error: () => {
         this.isBoosting = false;
         this.cdr.detectChanges();
-      }
+      },
     });
   }
 
@@ -268,7 +752,7 @@ export class App implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     this.svc.chatPlan(msg).subscribe({
-      next: result => {
+      next: (result) => {
         this.pendingPlan = {
           planId: result.plan_id,
           message: msg,
@@ -277,7 +761,10 @@ export class App implements OnInit, OnDestroy {
         };
 
         if (result.questions?.length) {
-          this._pushMsg({ role: 'bot', text: result.summary + '\n\n' + result.questions.join('\n') });
+          this._pushMsg({
+            role: 'bot',
+            text: result.summary + '\n\n' + result.questions.join('\n'),
+          });
           this.pendingPlan = null;
           this.chatState = 'idle';
         } else {
@@ -296,7 +783,7 @@ export class App implements OnInit, OnDestroy {
         this.pendingPlan = null;
         this.chatState = 'idle';
         this.cdr.detectChanges();
-      }
+      },
     });
   }
 
@@ -307,7 +794,7 @@ export class App implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     this.svc.chatExecute(planId, message).subscribe({
-      next: result => {
+      next: (result) => {
         if (result.success) {
           this._pushMsg({ role: 'bot', text: '✓ ' + result.done_summary });
           if (result.has_pdf) {
@@ -326,7 +813,7 @@ export class App implements OnInit, OnDestroy {
         this.pendingPlan = null;
         this.chatState = 'idle';
         this.cdr.detectChanges();
-      }
+      },
     });
   }
 
@@ -344,7 +831,7 @@ export class App implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     this.svc.chatUndo().subscribe({
-      next: result => {
+      next: (result) => {
         this._pushMsg({ role: result.success ? 'bot' : 'error', text: result.done_summary });
         if (result.success && result.has_pdf) {
           this.chatPdfRawUrl = this.svc.chatPdfUrl(result.edit_id);
@@ -357,7 +844,7 @@ export class App implements OnInit, OnDestroy {
         this._pushMsg({ role: 'error', text: 'Undo failed.' });
         this.chatState = 'idle';
         this.cdr.detectChanges();
-      }
+      },
     });
   }
 
@@ -386,7 +873,7 @@ export class App implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     this.svc.getResumeMd().subscribe({
-      next: res => {
+      next: (res) => {
         this.mdContent = res.content;
         this.mdOriginal = res.content;
         this.editorState = 'editing';
@@ -396,7 +883,7 @@ export class App implements OnInit, OnDestroy {
         this.editorState = 'error';
         this.editorError = 'Could not load resume content. Is the API server running?';
         this.cdr.detectChanges();
-      }
+      },
     });
   }
 
@@ -416,7 +903,7 @@ export class App implements OnInit, OnDestroy {
         this.editorState = 'error';
         this.editorError = 'Failed to save draft.';
         this.cdr.detectChanges();
-      }
+      },
     });
   }
 
@@ -433,7 +920,7 @@ export class App implements OnInit, OnDestroy {
     this.cdr.detectChanges();
 
     this.svc.syncResumeMd().subscribe({
-      next: res => {
+      next: (res) => {
         if (res.synced && res.has_pdf) {
           this.editorPdfRawUrl = this.svc.chatPdfUrl(res.edit_id);
           this.editorPdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.editorPdfRawUrl);
@@ -441,11 +928,11 @@ export class App implements OnInit, OnDestroy {
         this.editorState = 'synced';
         this.cdr.detectChanges();
       },
-      error: err => {
+      error: (err) => {
         this.editorState = 'error';
         this.editorError = err?.error?.detail ?? 'Sync failed. Check the API logs.';
         this.cdr.detectChanges();
-      }
+      },
     });
   }
 
@@ -456,8 +943,8 @@ export class App implements OnInit, OnDestroy {
 
   private _blobDownload(url: string, filename: string) {
     fetch(url)
-      .then(r => r.blob())
-      .then(blob => {
+      .then((r) => r.blob())
+      .then((blob) => {
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = blobUrl;
@@ -472,7 +959,7 @@ export class App implements OnInit, OnDestroy {
   // ── Polling ─────────────────────────────────────────────────────
   private _poll(taskId: string) {
     this.svc.getStatus(taskId).subscribe({
-      next: s => {
+      next: (s) => {
         this.status = s;
         this.cdr.detectChanges();
 
@@ -491,7 +978,7 @@ export class App implements OnInit, OnDestroy {
       },
       error: () => {
         this._pollTimeout = setTimeout(() => this._poll(taskId), 2000);
-      }
+      },
     });
   }
 

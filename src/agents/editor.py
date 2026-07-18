@@ -83,7 +83,7 @@ def _ask_clarifications(questions: list[str]) -> dict[str, str]:
     print("\n[Editor Agent] Clarifying questions before applying edit:\n")
     for i, q in enumerate(questions, 1):
         print(f"  {i}. {q}")
-        answer = input(f"     Your answer: ").strip()
+        answer = input("     Your answer: ").strip()
         answers[q] = answer
     return answers
 
@@ -139,8 +139,10 @@ def apply_pending_edits(config: dict | None = None) -> bool:
     if result.get("ambiguities"):
         answers = _ask_clarifications(result["ambiguities"])
         # Re-ask Claude with the answers appended
-        clarified_content = content + "\n\nClarifications from user:\n" + "\n".join(
-            f"Q: {q}\nA: {a}" for q, a in answers.items()
+        clarified_content = (
+            content
+            + "\n\nClarifications from user:\n"
+            + "\n".join(f"Q: {q}\nA: {a}" for q, a in answers.items())
         )
         prompt2 = _ANALYSE_PROMPT.format(edit_content=clarified_content, resume_tex=resume_tex)
         raw_json2 = ask_claude(prompt2)
@@ -179,7 +181,7 @@ def apply_pending_edits(config: dict | None = None) -> bool:
 
     patched = resume_tex.replace(insert_before, latex_block + "\n\n" + insert_before, 1)
     _RESUME.write_text(patched, encoding="utf-8")
-    print(f"[Editor Agent] resume/main.tex patched successfully.")
+    print("[Editor Agent] resume/main.tex patched successfully.")
 
     # Archive the processed edit
     _PROCESSED.mkdir(parents=True, exist_ok=True)
@@ -208,7 +210,7 @@ def apply_pending_edits(config: dict | None = None) -> bool:
         "#   - Rewrite a summary line\n"
         "#\n"
         "# Optionally hint the target with a header like:\n"
-        "#   TARGET: KGISL > Generative AI Developer > before \"AI-Powered Conversational Platform\"\n"
+        '#   TARGET: KGISL > Generative AI Developer > before "AI-Powered Conversational Platform"\n'
         "#\n"
         "# Leave blank (or only these comments) when there are no pending edits.\n"
         "# Processed edits are archived to inputs/processed/YYYY-MM-DD-<slug>.md automatically.\n"

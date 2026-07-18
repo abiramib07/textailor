@@ -1,5 +1,5 @@
-import { Component, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ChangeDetectorRef, inject } from '@angular/core';
+
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
@@ -7,11 +7,15 @@ import { AuthService } from '../auth.service';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink],
   templateUrl: './login.html',
   styleUrl: '../auth-shared.scss',
 })
 export class LoginComponent {
+  private auth = inject(AuthService);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
   identifier = '';
   pin = '';
   error = '';
@@ -22,8 +26,6 @@ export class LoginComponent {
   forgotError = '';
   forgotLoading = false;
 
-  constructor(private auth: AuthService, private router: Router, private cdr: ChangeDetectorRef) {}
-
   submit(): void {
     if (!this.identifier.trim() || !/^\d{4}$/.test(this.pin) || this.loading) return;
     this.loading = true;
@@ -32,7 +34,7 @@ export class LoginComponent {
     this.auth.pinLogin(this.identifier.trim(), this.pin).subscribe({
       next: () => {
         this.loading = false;
-        this.router.navigate(['/welcome']);
+        this.router.navigate(['/']);
       },
       error: (err) => {
         this.loading = false;

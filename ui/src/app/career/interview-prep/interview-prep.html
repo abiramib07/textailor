@@ -1,0 +1,93 @@
+<div class="ip-page">
+  <div class="ip-layout">
+    <!-- Company sidebar -->
+    <div class="ip-companies">
+      <div class="ip-companies-title">Companies</div>
+      @for (c of companies; track c) {
+        <button
+          type="button"
+          class="ip-company-btn"
+          [class.ip-company-btn--active]="c === selectedCompany"
+          (click)="selectCompany(c)"
+        >
+          {{ c }}
+        </button>
+      }
+      <div class="ip-new-company">
+        <input
+          type="text"
+          placeholder="New company…"
+          [(ngModel)]="newCompanyName"
+          (keyup.enter)="startNewCompany()"
+        />
+        <button type="button" (click)="startNewCompany()">+</button>
+      </div>
+    </div>
+
+    <!-- Checklist -->
+    <div class="ip-card">
+      @if (!selectedCompany) {
+        <p class="ip-hint">Pick or add a company to start its interview-prep checklist.</p>
+      }
+
+      @if (selectedCompany) {
+        <div class="ip-header">
+          <h2 class="ip-title">{{ selectedCompany }}</h2>
+          <span class="ip-progress">{{ coveredCount }} / {{ topics.length }} covered</span>
+        </div>
+
+        <div class="ip-add-form">
+          <input type="text" placeholder="Topic (e.g. System Design)" [(ngModel)]="newTopic" />
+          <div class="ip-add-row2">
+            <input type="text" placeholder="GitHub link (optional)" [(ngModel)]="newGithub" />
+            <input type="text" placeholder="YouTube link (optional)" [(ngModel)]="newYoutube" />
+          </div>
+          <input
+            type="text"
+            placeholder="Notes (optional)"
+            [(ngModel)]="newNotes"
+            (keyup.enter)="addTopic()"
+          />
+          <button
+            type="button"
+            class="ip-add-btn"
+            [disabled]="!newTopic.trim() || adding"
+            (click)="addTopic()"
+          >
+            {{ adding ? 'Adding…' : '+ Add topic' }}
+          </button>
+        </div>
+
+        @if (loading) {
+          <p class="ip-hint">Loading…</p>
+        }
+        @if (!loading && topics.length === 0) {
+          <p class="ip-hint">No topics yet — add what they're likely to ask.</p>
+        }
+
+        @for (t of topics; track t.id) {
+          <div class="ip-topic" [class.ip-topic--covered]="t.covered">
+            <label class="ip-topic-checkbox">
+              <input type="checkbox" [checked]="t.covered" (change)="toggleCovered(t)" />
+            </label>
+            <div class="ip-topic-body">
+              <div class="ip-topic-name">{{ t.topic }}</div>
+              <div class="ip-topic-links">
+                @if (t.github_url) {
+                  <a [href]="t.github_url" target="_blank" rel="noopener">GitHub ↗</a>
+                }
+                @if (t.youtube_url) {
+                  <a [href]="t.youtube_url" target="_blank" rel="noopener">YouTube ↗</a>
+                }
+              </div>
+              @if (t.notes) {
+                <p class="ip-topic-notes">{{ t.notes }}</p>
+              }
+            </div>
+            <button type="button" class="ip-topic-remove" (click)="removeTopic(t)">✕</button>
+          </div>
+        }
+      }
+    </div>
+  </div>
+</div>

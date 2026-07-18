@@ -1,25 +1,23 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, OnInit, ChangeDetectorRef, inject } from '@angular/core';
+
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../auth.service';
 
 @Component({
   selector: 'app-auth-callback',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [RouterLink],
   templateUrl: './callback.html',
   styleUrl: '../auth-shared.scss',
 })
 export class AuthCallbackComponent implements OnInit {
+  private auth = inject(AuthService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private cdr = inject(ChangeDetectorRef);
+
   error = '';
   loading = true;
-
-  constructor(
-    private auth: AuthService,
-    private route: ActivatedRoute,
-    private router: Router,
-    private cdr: ChangeDetectorRef
-  ) {}
 
   ngOnInit(): void {
     const status = this.route.snapshot.queryParamMap.get('status');
@@ -36,7 +34,7 @@ export class AuthCallbackComponent implements OnInit {
         if (!user.mobile_number) {
           this.router.navigate(['/complete-profile']);
         } else {
-          this.router.navigate(['/welcome']);
+          this.router.navigate(['/']);
         }
       },
       error: () => {

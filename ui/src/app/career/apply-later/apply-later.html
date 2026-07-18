@@ -1,0 +1,47 @@
+<div class="al-page">
+  <div class="al-card">
+    <h2 class="al-title">Apply Later</h2>
+    <p class="al-hint">
+      Save the application URL when the process is too involved to finish right now — come back
+      to it instead of losing the tab.
+    </p>
+
+    <div class="al-add-form">
+      <input type="text" placeholder="Application URL" [(ngModel)]="newUrl" (keyup.enter)="add()" />
+      <div class="al-add-row2">
+        <input type="text" placeholder="Company (optional)" [(ngModel)]="newCompany" />
+        <input type="text" placeholder="Notes (optional)" [(ngModel)]="newNotes" (keyup.enter)="add()" />
+      </div>
+      <button type="button" class="al-add-btn" [disabled]="!newUrl.trim() || adding" (click)="add()">
+        {{ adding ? 'Adding…' : '+ Add to queue' }}
+      </button>
+    </div>
+
+    <div class="al-divider"></div>
+
+    @if (loading) {
+      <p class="al-hint">Loading…</p>
+    }
+    @if (!loading && entries.length === 0) {
+      <p class="al-hint">Nothing queued — you're all caught up.</p>
+    }
+
+    @for (e of entries; track e.id) {
+      <div class="al-entry" [class.al-entry--applied]="e.applied">
+        <label class="al-checkbox">
+          <input type="checkbox" [checked]="e.applied" (change)="toggleApplied(e)" />
+        </label>
+        <div class="al-entry-body">
+          <a [href]="e.url" target="_blank" rel="noopener" class="al-entry-link">
+            {{ e.company_name || hostname(e.url) }}
+          </a>
+          <p class="al-entry-url">{{ e.url }}</p>
+          @if (e.notes) {
+            <p class="al-entry-notes">{{ e.notes }}</p>
+          }
+        </div>
+        <button type="button" class="al-remove-btn" (click)="remove(e)">✕</button>
+      </div>
+    }
+  </div>
+</div>

@@ -30,3 +30,12 @@ Thumbs.db
 
 # Auth module SQLite DB — local dev data, never tracked
 src/auth/data/
+
+# Career module SQLite DB + LinkedIn screenshot attachments — personal data
+src/career/data/
+
+# Resume identities SQLite DB, plus each added resume's own folder
+# (main.tex stays tracked — it's the original single-resume template)
+src/resumes/data/
+resume/*/
+inputs/backups/

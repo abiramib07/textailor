@@ -2,13 +2,18 @@ import {
   Component,
   ChangeDetectorRef,
   OnDestroy,
+  Output,
+  EventEmitter,
   ViewChild,
   ElementRef,
   inject,
 } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
-import { EmailService, EmailDraft } from './email.service';
+import { EmailService, EmailDraft, EmailSaveResult } from './email.service';
+import { ResumesService } from '../resumes/resumes.service';
+
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 interface EmailChatMessage {
   role: 'user' | 'assistant' | 'error';
@@ -32,6 +37,7 @@ const QUICK_SUGGESTS = [
 export class EmailGeneratorComponent implements OnDestroy {
   private svc = inject(EmailService);
   private cdr = inject(ChangeDetectorRef);
+  private resumesSvc = inject(ResumesService);
 
   jobPost = '';
   sourceUrl = '';
@@ -44,11 +50,31 @@ export class EmailGeneratorComponent implements OnDestroy {
   draft: EmailDraft | null = null;
   lastGeneratedSeconds = 0;
 
+  isEditing = false;
+  editTo = '';
+  editSubject = '';
+  editBody = '';
+  isSavingEdit = false;
+
   quickSuggests = QUICK_SUGGESTS;
   chatMessages: EmailChatMessage[] = [];
   chatInput = '';
   chatBusy = false;
   canUndo = false;
+
+  isSaving = false;
+  saveResult: EmailSaveResult | null = null;
+  saveError = '';
+  private _saveErrorTimer: ReturnType<typeof setTimeout> | null = null;
+  private _sendErrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+  sendTo = '';
+  isSending = false;
+  sendError = '';
+  sendResult: { to: string } | null = null;
+  showSendConfirm = false;
+
+  @Output() tailorResume = new EventEmitter<string>();
 
   @ViewChild('chatScroll') chatScrollEl!: ElementRef;
   private _elapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -56,6 +82,8 @@ export class EmailGeneratorComponent implements OnDestroy {
   ngOnDestroy() {
     this._clearTimer();
     if (this._copiedTimer) clearTimeout(this._copiedTimer);
+    if (this._saveErrorTimer) clearTimeout(this._saveErrorTimer);
+    if (this._sendErrorTimer) clearTimeout(this._sendErrorTimer);
   }
 
   get canGenerate(): boolean {
@@ -69,10 +97,16 @@ export class EmailGeneratorComponent implements OnDestroy {
     this.draft = null;
     this.chatMessages = [];
     this.canUndo = false;
+    this.isEditing = false;
+    this.saveResult = null;
+    this.saveError = '';
+    this.sendResult = null;
+    this.sendError = '';
+    this.showSendConfirm = false;
     this._startTimer();
     this.cdr.detectChanges();
 
-    this.svc.generate(this.jobPost, this.instruction).subscribe({
+    this.svc.generate(this.jobPost, this.instruction, this.sourceUrl).subscribe({
       next: (draft) => {
         this.draft = draft;
         this.lastGeneratedSeconds = this.elapsedSeconds;
@@ -103,8 +137,10 @@ export class EmailGeneratorComponent implements OnDestroy {
           subject: result.subject,
           body: result.body,
           role_title: result.role_title,
+          company_name: result.company_name,
         };
         this.canUndo = true;
+        this.isEditing = false;
         this._pushMsg({ role: 'assistant', text: result.done_summary });
         this.chatBusy = false;
         this.cdr.detectChanges();
@@ -138,6 +174,98 @@ export class EmailGeneratorComponent implements OnDestroy {
     });
   }
 
+  get canSave(): boolean {
+    return !!this.draft && !!this.draft.company_name.trim() && !this.isSaving;
+  }
+
+  save() {
+    if (!this.draft || !this.canSave) return;
+    this.isSaving = true;
+    this.saveError = '';
+    this.saveResult = null;
+    this.cdr.detectChanges();
+
+    this.svc
+      .save(this.draft.email_id, this.draft.company_name, this.draft.role_title, this.sourceUrl)
+      .subscribe({
+        next: (result) => {
+          this.saveResult = result;
+          this.isSaving = false;
+          this.cdr.detectChanges();
+        },
+        error: () => {
+          this._showSaveError("Couldn't save — please try again.");
+          this.isSaving = false;
+          this.cdr.detectChanges();
+        },
+      });
+  }
+
+  /** Shows a friendly, transient notification — never the raw backend
+   * error text — and auto-dismisses it so it reads as a toast, not a
+   * blocking wall that discourages the next action (e.g. Send Email). */
+  private _showSaveError(message: string) {
+    this.saveError = message;
+    if (this._saveErrorTimer) clearTimeout(this._saveErrorTimer);
+    this._saveErrorTimer = setTimeout(() => {
+      this.saveError = '';
+      this.cdr.detectChanges();
+    }, 4000);
+  }
+
+  private _showSendError(message: string) {
+    this.sendError = message;
+    if (this._sendErrorTimer) clearTimeout(this._sendErrorTimer);
+    this._sendErrorTimer = setTimeout(() => {
+      this.sendError = '';
+      this.cdr.detectChanges();
+    }, 4000);
+  }
+
+  get resumeLabel(): string {
+    return this.resumesSvc.activeResume()?.label || 'resume';
+  }
+
+  get canSend(): boolean {
+    return !!this.draft && EMAIL_PATTERN.test(this.sendTo.trim()) && !this.isSending;
+  }
+
+  openSendConfirm() {
+    if (!this.canSend) return;
+    this.showSendConfirm = true;
+  }
+
+  cancelSend() {
+    this.showSendConfirm = false;
+  }
+
+  confirmSend() {
+    if (!this.draft || !this.canSend) return;
+    this.showSendConfirm = false;
+    this.isSending = true;
+    this.sendError = '';
+    this.sendResult = null;
+    this.cdr.detectChanges();
+
+    this.svc.send(this.draft.email_id, this.sendTo.trim()).subscribe({
+      next: (result) => {
+        this.sendResult = result;
+        this.isSending = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this._showSendError(err?.error?.detail ?? 'Could not send this email.');
+        this.isSending = false;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  requestTailorResume() {
+    if (!this.jobPost.trim()) return;
+    this.tailorResume.emit(this.jobPost);
+  }
+
   copied = false;
   private _copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -163,13 +291,58 @@ export class EmailGeneratorComponent implements OnDestroy {
     this.chatMessages = [];
     this.chatInput = '';
     this.canUndo = false;
+    this.isEditing = false;
     this.generateError = '';
     this.copied = false;
+    this.saveResult = null;
+    this.saveError = '';
+    this.sendTo = '';
+    this.sendResult = null;
+    this.sendError = '';
+    this.showSendConfirm = false;
     this.cdr.detectChanges();
   }
 
   get downloadUrl(): string | null {
     return this.draft ? this.svc.downloadUrl(this.draft.email_id) : null;
+  }
+
+  startEdit() {
+    if (!this.draft) return;
+    this.editTo = this.draft.to;
+    this.editSubject = this.draft.subject;
+    this.editBody = this.draft.body;
+    this.isEditing = true;
+  }
+
+  cancelEdit() {
+    this.isEditing = false;
+  }
+
+  get canSaveEdit(): boolean {
+    return !!this.draft && this.editSubject.trim().length > 0 && !this.isSavingEdit;
+  }
+
+  saveEdit() {
+    if (!this.draft || !this.canSaveEdit) return;
+    this.isSavingEdit = true;
+    this.svc.update(this.draft.email_id, this.editTo, this.editSubject, this.editBody).subscribe({
+      next: (draft) => {
+        this.draft = draft;
+        this.canUndo = true;
+        this.isEditing = false;
+        this.isSavingEdit = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this._pushMsg({
+          role: 'error',
+          text: err?.error?.detail ?? 'Could not save your edits.',
+        });
+        this.isSavingEdit = false;
+        this.cdr.detectChanges();
+      },
+    });
   }
 
   private _pushMsg(msg: EmailChatMessage) {

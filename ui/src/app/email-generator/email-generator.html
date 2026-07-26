@@ -9,17 +9,6 @@
       [disabled]="isGenerating"
     ></textarea>
 
-    <div class="eg-source-row">
-      <span>Source (optional):</span>
-      <input
-        type="text"
-        class="eg-source-input"
-        [(ngModel)]="sourceUrl"
-        placeholder="linkedin.com/feed/…"
-        [disabled]="isGenerating"
-      />
-    </div>
-
     <div class="eg-ask-row">
       <div class="eg-ask-label">What do you need?</div>
       <input type="text" class="eg-ask-input" [(ngModel)]="instruction" [disabled]="isGenerating" />
@@ -61,6 +50,11 @@
         <div class="eg-preview-head">
           <div class="eg-panel-label" style="margin-bottom: 0">Email preview</div>
           <div class="eg-preview-actions">
+            @if (!isEditing) {
+              <button type="button" class="eg-icon-btn eg-icon-btn--edit" (click)="startEdit()">
+                ✎ Edit
+              </button>
+            }
             <button
               type="button"
               class="eg-icon-btn eg-icon-btn--copy"
@@ -77,17 +71,141 @@
             </button>
           </div>
         </div>
-        <div class="eg-email-card">
-          <div class="eg-email-meta">
-            <div><b>To:</b> {{ draft.to }}</div>
-            <div><b>Subject:</b> {{ draft.subject }}</div>
+        @if (!isEditing) {
+          <div class="eg-email-card">
+            <div class="eg-email-meta">
+              <div><b>To:</b> {{ draft.to }}</div>
+              <div><b>Subject:</b> {{ draft.subject }}</div>
+            </div>
+            <div class="eg-email-body">
+              @for (para of draft.body.split('\n\n'); track para) {
+                <p>{{ para }}</p>
+              }
+            </div>
           </div>
-          <div class="eg-email-body">
-            @for (para of draft.body.split('\n\n'); track para) {
-              <p>{{ para }}</p>
-            }
+        } @else {
+          <div class="eg-email-card eg-email-card--editing">
+            <div class="eg-edit-field">
+              <label for="eg-edit-to">To</label>
+              <input id="eg-edit-to" type="text" [(ngModel)]="editTo" [disabled]="isSavingEdit" />
+            </div>
+            <div class="eg-edit-field">
+              <label for="eg-edit-subject">Subject</label>
+              <input
+                id="eg-edit-subject"
+                type="text"
+                [(ngModel)]="editSubject"
+                [disabled]="isSavingEdit"
+              />
+            </div>
+            <div class="eg-edit-field">
+              <label for="eg-edit-body">Body</label>
+              <textarea
+                id="eg-edit-body"
+                class="eg-edit-body-textarea"
+                [(ngModel)]="editBody"
+                [disabled]="isSavingEdit"
+              ></textarea>
+            </div>
+            <div class="eg-edit-actions">
+              <button type="button" class="eg-icon-btn" (click)="cancelEdit()" [disabled]="isSavingEdit">
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="eg-icon-btn eg-icon-btn--save"
+                [disabled]="!canSaveEdit"
+                (click)="saveEdit()"
+              >
+                {{ isSavingEdit ? 'Saving…' : 'Save Edits' }}
+              </button>
+            </div>
+          </div>
+        }
+
+        <div class="eg-save-row">
+          <div class="eg-save-field">
+            <label for="eg-company-input">Company</label>
+            <input
+              id="eg-company-input"
+              type="text"
+              [(ngModel)]="draft.company_name"
+              placeholder="Company name"
+              [disabled]="isSaving"
+            />
+          </div>
+          <div class="eg-save-field">
+            <label for="eg-role-input">Role</label>
+            <input
+              id="eg-role-input"
+              type="text"
+              [(ngModel)]="draft.role_title"
+              placeholder="Role title"
+              [disabled]="isSaving"
+            />
+          </div>
+          <div class="eg-save-field eg-save-field--wide">
+            <label for="eg-joblink-input">Job Link</label>
+            <input
+              id="eg-joblink-input"
+              type="text"
+              [(ngModel)]="sourceUrl"
+              placeholder="https://linkedin.com/jobs/…"
+              [disabled]="isSaving"
+            />
+          </div>
+          <div class="eg-save-field eg-save-field--wide">
+            <label for="eg-sendto-input">Send to</label>
+            <input
+              id="eg-sendto-input"
+              type="email"
+              [(ngModel)]="sendTo"
+              placeholder="hiring.manager@company.com"
+              [disabled]="isSending"
+            />
           </div>
         </div>
+        <div class="eg-save-actions">
+          <button type="button" class="eg-icon-btn eg-icon-btn--save" [disabled]="!canSave" (click)="save()">
+            {{ isSaving ? 'Saving…' : 'Save' }}
+          </button>
+          <button type="button" class="eg-icon-btn eg-icon-btn--send" [disabled]="!canSend" (click)="openSendConfirm()">
+            {{ isSending ? 'Sending…' : 'Send Email' }}
+          </button>
+          <button type="button" class="eg-icon-btn" (click)="requestTailorResume()">
+            Tailor Resume for This Role
+          </button>
+        </div>
+
+        @if (saveError) {
+          <div class="eg-toast eg-toast--error">{{ saveError }}</div>
+        }
+        @if (sendError) {
+          <div class="eg-toast eg-toast--error">{{ sendError }}</div>
+        }
+        @if (sendResult) {
+          <div class="eg-save-banner">
+            <b>Sent.</b> Emailed to <b>{{ sendResult.to }}</b> with {{ resumeLabel }}.pdf attached.
+          </div>
+        }
+        @if (saveResult) {
+          <div class="eg-save-banner">
+            <b>Saved.</b>
+            @if (saveResult.apply_later_created) {
+              Added a new Application Tracker entry for <b>{{ saveResult.company_name }}</b> — status Applied.
+            } @else if (saveResult.apply_later_id) {
+              Linked to the existing <b>{{ saveResult.company_name }}</b> application — status set to Applied.
+            }
+            @if (saveResult.topics_added.length) {
+              <div>{{ saveResult.topics_added.length }} topic{{ saveResult.topics_added.length === 1 ? '' : 's' }} added to the interview checklist.</div>
+              <div class="eg-chip-row">
+                @for (topic of saveResult.topics_added; track topic) {
+                  <span class="eg-chip">{{ topic }}</span>
+                }
+              </div>
+            }
+          </div>
+        }
       </div>
       <div class="eg-chatpanel">
         <div class="eg-chathead">
@@ -130,6 +248,23 @@
             [disabled]="!chatInput.trim() || chatBusy"
           >
             {{ chatBusy ? '…' : 'Send' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (showSendConfirm && draft) {
+    <div class="eg-modal-backdrop">
+      <div class="eg-modal">
+        <div class="eg-modal-title">Send this email?</div>
+        <div class="eg-modal-row"><b>To:</b> {{ sendTo }}</div>
+        <div class="eg-modal-row"><b>Subject:</b> {{ draft.subject }}</div>
+        <div class="eg-modal-row"><b>Attachment:</b> {{ resumeLabel }}.pdf</div>
+        <div class="eg-modal-actions">
+          <button type="button" class="eg-icon-btn" (click)="cancelSend()">Cancel</button>
+          <button type="button" class="eg-icon-btn eg-icon-btn--send" (click)="confirmSend()">
+            Confirm Send
           </button>
         </div>
       </div>

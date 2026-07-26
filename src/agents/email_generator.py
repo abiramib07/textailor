@@ -26,9 +26,10 @@ Extra instruction from the candidate: {instruction}
 Output ONLY a raw JSON object (no markdown fences, no explanation outside JSON):
 {{
   "role_title": "job title extracted from the post",
+  "company_name": "hiring company's name extracted from the post, or empty string if the post never names it",
   "to": "hiring.manager@company.com or a name if no email is given",
   "subject": "Application for <role> — <candidate name from resume>",
-  "body": "The full email body as plain text with \\n\\n between paragraphs. Include a greeting and a sign-off with the candidate's name and contact info from the resume."
+  "body": "The full email body as plain text with \\n\\n between paragraphs. End with a sign-off using the candidate's ACTUAL name, phone, email, and LinkedIn/GitHub links exactly as they appear in the resume's Contact Info section below — never a placeholder like '[Your Name]' or '[Your Phone]'."
 }}
 
 JOB POST:

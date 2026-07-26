@@ -50,3 +50,11 @@ session-history/
 /worklog-update.md
 /issue-log.md
 /email_generator_tab.html
+
+# Personal job-hunt utility (standalone script + generated tracker) —
+# unrelated to the TexTailor app itself, not tracked.
+/job-search/
+
+# Scratch PDF used to eyeball a compile before overwriting main.pdf —
+# not a real build artifact, don't track it.
+resume/_verify.pdf

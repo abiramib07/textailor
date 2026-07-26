@@ -62,6 +62,10 @@ export class TopicMappingComponent {
     return Math.round((frequency / this.maxFrequency) * 100);
   }
 
+  get coveredCount(): number {
+    return this.entries.filter((e) => e.covered).length;
+  }
+
   get requiredEntries(): TopicMapEntry[] {
     return this.entries.filter((e) => e.category === 'required');
   }

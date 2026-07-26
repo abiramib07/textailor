@@ -37,11 +37,20 @@
       </p>
     }
 
+    @if (!loading && entries.length > 0) {
+      <div class="tm-coverage-summary">
+        ✓ {{ coveredCount }} / {{ entries.length }} keywords already on your resume
+      </div>
+    }
+
     @if (!loading && requiredEntries.length) {
       <div class="tm-section-title">Required, most-requested first</div>
       @for (e of requiredEntries; track e.keyword + e.years_bucket) {
-        <div class="tm-row">
-          <span class="tm-keyword">{{ e.keyword }}</span>
+        <div class="tm-row" [class.tm-row--covered]="e.covered">
+          <span class="tm-covered-dot" [title]="e.covered ? 'Already on your resume' : 'Not on your resume yet'">
+            {{ e.covered ? '✓' : '' }}
+          </span>
+          <span class="tm-keyword" [title]="e.keyword">{{ e.keyword }}</span>
           <div class="tm-bar-track">
             <div class="tm-bar-fill tm-bar-fill--required" [style.width.%]="barWidth(e.frequency)"></div>
           </div>
@@ -53,8 +62,11 @@
     @if (!loading && preferredEntries.length) {
       <div class="tm-section-title">Preferred</div>
       @for (e of preferredEntries; track e.keyword + e.years_bucket) {
-        <div class="tm-row">
-          <span class="tm-keyword">{{ e.keyword }}</span>
+        <div class="tm-row" [class.tm-row--covered]="e.covered">
+          <span class="tm-covered-dot" [title]="e.covered ? 'Already on your resume' : 'Not on your resume yet'">
+            {{ e.covered ? '✓' : '' }}
+          </span>
+          <span class="tm-keyword" [title]="e.keyword">{{ e.keyword }}</span>
           <div class="tm-bar-track">
             <div class="tm-bar-fill tm-bar-fill--preferred" [style.width.%]="barWidth(e.frequency)"></div>
           </div>

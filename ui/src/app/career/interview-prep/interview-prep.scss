@@ -118,6 +118,33 @@
   font-weight: 600;
 }
 
+.ip-seed-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ip-seed-btn {
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid #6366f1;
+  background: transparent;
+  color: #818cf8;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) { background: rgba(99, 102, 241, 0.12); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+
+.ip-seed-message {
+  font-size: 12px;
+  color: #9296a6;
+}
+
 .ip-add-form {
   background: #151926;
   border: 1px solid #242938;

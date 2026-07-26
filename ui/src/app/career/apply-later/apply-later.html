@@ -1,46 +1,285 @@
 <div class="al-page">
   <div class="al-card">
-    <h2 class="al-title">Apply Later</h2>
+    <h2 class="al-title">Application Tracker</h2>
     <p class="al-hint">
-      Save the application URL when the process is too involved to finish right now — come back
-      to it instead of losing the tab.
+      Track every application end to end — status, referral, follow-ups, interview rounds. The
+      dashboard below updates live as you change status, so it's always in sync.
+    </p>
+    <p class="al-tip">
+      Tip: apply to easier/practice companies first to warm up, save target companies for once
+      you're comfortable with the process. A reasonable weekly target is 10–15 quality
+      applications rather than mass-applying.
     </p>
 
-    <div class="al-add-form">
-      <input type="text" placeholder="Application URL" [(ngModel)]="newUrl" (keyup.enter)="add()" />
+    <div class="al-skills-panel">
+      <button type="button" class="al-skills-toggle" (click)="toggleSkillsPanel()">
+        <span class="al-skills-chevron" [class.al-skills-chevron--open]="skillsPanelOpen()">▸</span>
+        🧠 My Technical Skills ({{ skills().length }})
+      </button>
+      @if (skillsPanelOpen()) {
+        <div class="al-skills-chips">
+          @if (skills().length === 0) {
+            <p class="al-hint">No Technical Skills section found on the active resume.</p>
+          }
+          @for (s of skills(); track s) {
+            <span class="al-skill-chip">{{ s }}</span>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="al-search-panel">
+      <div class="al-search-heading">🔍 Find Jobs</div>
+      <p class="al-hint">
+        Searches the web live for real, currently open postings matching your criteria and adds
+        them below as new tracked applications. Takes 1–5 minutes — it runs several searches.
+        Results are only as good as what's actually posted online right now; always verify a
+        listing before applying.
+      </p>
+      @if (searchError) {
+        <div class="al-error">{{ searchError }}</div>
+      }
+      @if (searchNote && !searching) {
+        <div class="al-search-note">{{ searchNote }}</div>
+      }
+      <input
+        type="text"
+        placeholder="Role / skills to search for"
+        [(ngModel)]="searchQuery"
+        [disabled]="searching"
+      />
       <div class="al-add-row2">
-        <input type="text" placeholder="Company (optional)" [(ngModel)]="newCompany" />
+        <input
+          type="number"
+          min="0"
+          placeholder="Years of experience"
+          [(ngModel)]="searchYears"
+          [disabled]="searching"
+        />
+        <input type="text" placeholder="Location" [(ngModel)]="searchLocation" [disabled]="searching" />
+        <input
+          type="number"
+          min="1"
+          max="30"
+          placeholder="How many"
+          [(ngModel)]="searchCount"
+          [disabled]="searching"
+        />
+        <input
+          type="number"
+          min="1"
+          placeholder="Min salary (LPA, optional)"
+          [(ngModel)]="searchMinSalaryLpa"
+          [disabled]="searching"
+        />
+      </div>
+      <button
+        type="button"
+        class="al-add-btn"
+        [disabled]="!searchQuery.trim() || searching"
+        (click)="searchJobs()"
+      >
+        @if (searching) {
+          <span class="al-spinner-label"><span class="al-spinner"></span> Searching the web…</span>
+        } @else {
+          <span>Search for openings</span>
+        }
+      </button>
+      @if (searching || searchTrace.length > 0) {
+        <div class="al-trace-log">
+          @if (searchTrace.length === 0) {
+            <div class="al-trace-line al-trace-line--pending">Starting up…</div>
+          }
+          @for (line of searchTrace; track $index) {
+            <div class="al-trace-line">{{ line }}</div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="al-divider"></div>
+
+    <div class="al-add-form">
+      <div class="al-search-heading">+ Add manually</div>
+      <input type="text" placeholder="Application URL *" [(ngModel)]="newUrl" (keyup.enter)="add()" />
+      <div class="al-add-row2">
+        <input type="text" placeholder="Company" [(ngModel)]="newCompany" />
+        <input type="text" placeholder="Role title" [(ngModel)]="newRoleTitle" />
+      </div>
+      <div class="al-add-row2">
+        <input type="text" placeholder="Tier (e.g. Product, GCC, Services, Startup)" [(ngModel)]="newTier" />
         <input type="text" placeholder="Notes (optional)" [(ngModel)]="newNotes" (keyup.enter)="add()" />
       </div>
       <button type="button" class="al-add-btn" [disabled]="!newUrl.trim() || adding" (click)="add()">
-        {{ adding ? 'Adding…' : '+ Add to queue' }}
+        {{ adding ? 'Adding…' : '+ Add application' }}
       </button>
     </div>
 
     <div class="al-divider"></div>
 
+    <!-- ── Dashboard ── -->
+    @if (!loading && total() > 0) {
+      <div class="al-dashboard">
+        <div class="al-stat">
+          <span class="al-stat-num">{{ total() }}</span>
+          <span class="al-stat-label">Total</span>
+        </div>
+        <div class="al-stat">
+          <span class="al-stat-num">{{ notAppliedCount() }}</span>
+          <span class="al-stat-label">Not applied</span>
+        </div>
+        <div class="al-stat">
+          <span class="al-stat-num">{{ appliedCount() }}</span>
+          <span class="al-stat-label">Applied</span>
+        </div>
+        <div class="al-stat">
+          <span class="al-stat-num">{{ inProgressCount() }}</span>
+          <span class="al-stat-label">Interviewing</span>
+        </div>
+        <div class="al-stat al-stat--good">
+          <span class="al-stat-num">{{ offerCount() }}</span>
+          <span class="al-stat-label">Offers</span>
+        </div>
+        <div class="al-stat al-stat--bad">
+          <span class="al-stat-num">{{ rejectedCount() }}</span>
+          <span class="al-stat-label">Rejected</span>
+        </div>
+        <div class="al-stat">
+          <span class="al-stat-num">{{ onHoldCount() }}</span>
+          <span class="al-stat-label">On hold</span>
+        </div>
+      </div>
+
+      @if (tierBreakdown().length > 1) {
+        <div class="al-tier-breakdown">
+          @for (t of tierBreakdown(); track t.tier) {
+            <span class="al-tier-chip">{{ t.tier }}: {{ t.applied }}/{{ t.total }} applied</span>
+          }
+        </div>
+      }
+
+      <div class="al-divider"></div>
+    }
+
     @if (loading) {
       <p class="al-hint">Loading…</p>
     }
-    @if (!loading && entries.length === 0) {
-      <p class="al-hint">Nothing queued — you're all caught up.</p>
+    @if (!loading && total() === 0) {
+      <p class="al-hint">Nothing tracked yet — add your first application above.</p>
     }
 
-    @for (e of entries; track e.id) {
-      <div class="al-entry" [class.al-entry--applied]="e.applied">
-        <label class="al-checkbox">
-          <input type="checkbox" [checked]="e.applied" (change)="toggleApplied(e)" />
-        </label>
-        <div class="al-entry-body">
-          <a [href]="e.url" target="_blank" rel="noopener" class="al-entry-link">
-            {{ e.company_name || hostname(e.url) }}
-          </a>
-          <p class="al-entry-url">{{ e.url }}</p>
-          @if (e.notes) {
-            <p class="al-entry-notes">{{ e.notes }}</p>
-          }
+    @for (group of groupedEntries(); track group.tier) {
+      <div class="al-tier-group">
+        <div class="al-tier-heading">{{ group.tier }}</div>
+        <div class="al-table-scroll">
+          <table class="al-table">
+            <thead>
+              <tr>
+                <th>Company / Role</th>
+                <th>Status</th>
+                <th>Referral</th>
+                <th>Date Applied</th>
+                <th>Next Follow-up</th>
+                <th>Interview Round</th>
+                <th>Salary Discussed</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (e of group.items; track e.id) {
+                <tr>
+                  <td class="al-cell-company">
+                    <a [href]="e.url" target="_blank" rel="noopener" class="al-entry-link">
+                      {{ e.company_name || hostname(e.url) }}
+                    </a>
+                    @if (e.role_title) {
+                      <div class="al-entry-role">{{ e.role_title }}</div>
+                    }
+                  </td>
+                  <td>
+                    <select
+                      class="al-select"
+                      aria-label="Application status"
+                      [ngModel]="e.status"
+                      (ngModelChange)="updateStatus(e, $event)"
+                    >
+                      @for (s of statusOptions; track s) {
+                        <option [value]="s">{{ s }}</option>
+                      }
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      class="al-select"
+                      aria-label="Referral"
+                      [ngModel]="e.referral ?? ''"
+                      (ngModelChange)="updateReferral(e, $event)"
+                    >
+                      <option value="">—</option>
+                      @for (r of referralOptions; track r) {
+                        <option [value]="r">{{ r }}</option>
+                      }
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      type="date"
+                      class="al-date-input"
+                      aria-label="Date applied"
+                      [ngModel]="e.date_applied ?? ''"
+                      (ngModelChange)="updateField(e, 'date_applied', $event)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="date"
+                      class="al-date-input"
+                      aria-label="Next follow-up"
+                      [ngModel]="e.next_follow_up ?? ''"
+                      (ngModelChange)="updateField(e, 'next_follow_up', $event)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="al-text-input"
+                      aria-label="Interview round"
+                      placeholder="—"
+                      [ngModel]="e.interview_round ?? ''"
+                      (ngModelChange)="updateField(e, 'interview_round', $event)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="al-text-input"
+                      aria-label="Salary discussed"
+                      placeholder="—"
+                      [ngModel]="e.salary_discussed ?? ''"
+                      (ngModelChange)="updateField(e, 'salary_discussed', $event)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      class="al-text-input al-text-input--notes"
+                      aria-label="Notes"
+                      placeholder="—"
+                      [ngModel]="e.notes"
+                      (ngModelChange)="updateField(e, 'notes', $event)"
+                    />
+                  </td>
+                  <td>
+                    <button type="button" class="al-remove-btn" (click)="remove(e)" aria-label="Remove entry">
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
         </div>
-        <button type="button" class="al-remove-btn" (click)="remove(e)">✕</button>
       </div>
     }
   </div>

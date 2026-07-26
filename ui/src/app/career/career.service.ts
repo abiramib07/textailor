@@ -10,6 +10,18 @@ export interface PersonalInfoEntry {
   value: string;
 }
 
+export type ApplyLaterStatus =
+  | 'Not Applied'
+  | 'Applied'
+  | 'OA-Screening'
+  | 'Interview Scheduled'
+  | 'Interview Completed'
+  | 'Offer'
+  | 'Rejected'
+  | 'On Hold';
+
+export type ApplyLaterReferral = 'Yes' | 'No' | 'Pending';
+
 export interface ApplyLaterEntry {
   id: string;
   url: string;
@@ -17,7 +29,27 @@ export interface ApplyLaterEntry {
   notes: string;
   applied: number;
   created_at: number;
+  tier: string | null;
+  role_title: string | null;
+  status: ApplyLaterStatus;
+  referral: ApplyLaterReferral | null;
+  date_applied: string | null;
+  next_follow_up: string | null;
+  interview_round: string | null;
+  salary_discussed: string | null;
 }
+
+export type ApplyLaterFields = Partial<{
+  notes: string;
+  tier: string;
+  role_title: string;
+  status: ApplyLaterStatus;
+  referral: ApplyLaterReferral;
+  date_applied: string;
+  next_follow_up: string;
+  interview_round: string;
+  salary_discussed: string;
+}>;
 
 export interface JobPostEntry {
   id: string;
@@ -50,6 +82,7 @@ export interface TopicMapEntry {
   category: string;
   years_bucket: string;
   frequency: number;
+  covered: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -101,24 +134,74 @@ export class CareerService {
     });
   }
 
-  createApplyLater(url: string, companyName: string, notes: string): Observable<{ entry: ApplyLaterEntry }> {
+  createApplyLater(
+    url: string,
+    companyName: string,
+    notes: string,
+    tier = '',
+    roleTitle = '',
+  ): Observable<{ entry: ApplyLaterEntry }> {
     return this.http.post<{ entry: ApplyLaterEntry }>(
       `${API}/apply-later`,
-      { resume_id: this.resumeId, url, company_name: companyName, notes },
+      { resume_id: this.resumeId, url, company_name: companyName, notes, tier, role_title: roleTitle },
       this.opts,
     );
   }
 
-  updateApplyLater(id: string, applied?: boolean, notes?: string): Observable<{ entry: ApplyLaterEntry }> {
+  updateApplyLater(id: string, fields: ApplyLaterFields, applied?: boolean): Observable<{ entry: ApplyLaterEntry }> {
     return this.http.patch<{ entry: ApplyLaterEntry }>(
       `${API}/apply-later/${id}`,
-      { applied, notes },
+      { ...fields, applied },
       this.opts,
     );
   }
 
   deleteApplyLater(id: string): Observable<{ ok: boolean }> {
     return this.http.delete<{ ok: boolean }>(`${API}/apply-later/${id}`, this.opts);
+  }
+
+  /** Start a web search for real, currently open postings matching the
+   * given criteria — returns immediately with a task_id to poll via
+   * `pollApplyLaterSearch`. Runs in the background since it can take a
+   * few minutes (several live web searches). */
+  startApplyLaterSearch(
+    query: string,
+    yearsExperience: number,
+    location: string,
+    count: number,
+    minSalaryLpa: number | null,
+  ): Observable<{ task_id: string }> {
+    return this.http.post<{ task_id: string }>(
+      `${API}/apply-later/search`,
+      {
+        resume_id: this.resumeId,
+        query,
+        years_experience: yearsExperience,
+        location,
+        count,
+        min_salary_lpa: minSalaryLpa,
+      },
+      this.opts,
+    );
+  }
+
+  /** Poll a running job search: live trace lines, status, and — once
+   * status is 'done' — the newly inserted entries and the agent's caveat
+   * note. */
+  pollApplyLaterSearch(taskId: string): Observable<{
+    status: 'running' | 'done' | 'error';
+    trace: string[];
+    entries: ApplyLaterEntry[];
+    search_note: string;
+    error: string | null;
+  }> {
+    return this.http.get<{
+      status: 'running' | 'done' | 'error';
+      trace: string[];
+      entries: ApplyLaterEntry[];
+      search_note: string;
+      error: string | null;
+    }>(`${API}/apply-later/search/${taskId}`, this.opts);
   }
 
   // ── Job post / LinkedIn archive ───────────────────────────────
@@ -216,6 +299,27 @@ export class CareerService {
 
   deleteInterviewTopic(id: string): Observable<{ ok: boolean }> {
     return this.http.delete<{ ok: boolean }>(`${API}/interview-topics/${id}`, this.opts);
+  }
+
+  // ── Resume skills ──────────────────────────────────────────────
+  /** Flat list of individual skills/tools pulled from the active resume's
+   * Technical Skills section — used to seed interview-prep topics, mark
+   * covered keywords in the topic map, and as a quick reference chip list. */
+  getResumeSkills(): Observable<{ skills: string[] }> {
+    return this.http.get<{ skills: string[] }>(`${API}/resume-skills`, {
+      ...this.opts,
+      ...this.resumeParams(),
+    });
+  }
+
+  /** Add every resume skill not already on this company's interview-prep
+   * checklist as a new, unchecked topic. Returns the topics actually added. */
+  seedInterviewTopicsFromSkills(companyName: string): Observable<{ added: string[] }> {
+    return this.http.post<{ added: string[] }>(
+      `${API}/interview-topics/seed-skills`,
+      { resume_id: this.resumeId, company_name: companyName },
+      this.opts,
+    );
   }
 
   // ── Topic mapping ──────────────────────────────────────────────

@@ -28,6 +28,9 @@ export class InterviewPrepComponent {
   newNotes = '';
   adding = false;
 
+  seedingSkills = false;
+  seedSkillsMessage = '';
+
   constructor() {
     effect(() => {
       this.resumesSvc.activeResumeId();
@@ -53,6 +56,7 @@ export class InterviewPrepComponent {
 
   selectCompany(company: string) {
     this.selectedCompany = company;
+    this.seedSkillsMessage = '';
     this.loadTopics();
   }
 
@@ -62,6 +66,7 @@ export class InterviewPrepComponent {
     this.selectedCompany = name;
     this.newCompanyName = '';
     this.topics = [];
+    this.seedSkillsMessage = '';
     this.cdr.detectChanges();
   }
 
@@ -105,6 +110,28 @@ export class InterviewPrepComponent {
           this.cdr.detectChanges();
         },
       });
+  }
+
+  seedFromSkills() {
+    if (!this.selectedCompany || this.seedingSkills) return;
+    this.seedingSkills = true;
+    this.seedSkillsMessage = '';
+    this.svc.seedInterviewTopicsFromSkills(this.selectedCompany).subscribe({
+      next: ({ added }) => {
+        this.seedingSkills = false;
+        this.seedSkillsMessage = added.length
+          ? `Added ${added.length} skill${added.length === 1 ? '' : 's'} as topics.`
+          : 'Every resume skill is already on this checklist.';
+        this.loadTopics();
+        this.loadCompanies();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.seedingSkills = false;
+        this.seedSkillsMessage = err?.error?.detail ?? 'Could not seed topics from your skills.';
+        this.cdr.detectChanges();
+      },
+    });
   }
 
   toggleCovered(topic: InterviewTopicEntry) {

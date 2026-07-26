@@ -36,6 +36,20 @@
           <span class="ip-progress">{{ coveredCount }} / {{ topics.length }} covered</span>
         </div>
 
+        <div class="ip-seed-row">
+          <button
+            type="button"
+            class="ip-seed-btn"
+            [disabled]="seedingSkills"
+            (click)="seedFromSkills()"
+          >
+            {{ seedingSkills ? 'Adding…' : '+ Seed from my Skills' }}
+          </button>
+          @if (seedSkillsMessage) {
+            <span class="ip-seed-message">{{ seedSkillsMessage }}</span>
+          }
+        </div>
+
         <div class="ip-add-form">
           <input type="text" placeholder="Topic (e.g. System Design)" [(ngModel)]="newTopic" />
           <div class="ip-add-row2">

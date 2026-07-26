@@ -5,6 +5,7 @@ import { CareerService, PersonalInfoEntry } from '../career.service';
 import { ResumesService } from '../../resumes/resumes.service';
 
 const SUGGESTED_FIELDS: { key: string; label: string; multiline?: boolean }[] = [
+  { key: 'full_name', label: 'Full Name' },
   { key: 'linkedin_url', label: 'LinkedIn URL' },
   { key: 'github_url', label: 'GitHub URL' },
   { key: 'portfolio_url', label: 'Portfolio URL' },

@@ -75,6 +75,20 @@ CREATE TABLE IF NOT EXISTS jd_keyword_observations (
     observed_at   REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_keyword_lookup ON jd_keyword_observations(keyword, years_bucket);
+
+CREATE TABLE IF NOT EXISTS sent_emails (
+    id              TEXT PRIMARY KEY,
+    resume_id       TEXT,
+    apply_later_id  TEXT,
+    company_name    TEXT,
+    role_title      TEXT,
+    to_addr         TEXT,
+    subject         TEXT,
+    body            TEXT,
+    source_url      TEXT,
+    sent_at         REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sent_emails_company ON sent_emails(company_name);
 """
 
 # Indexed after `_migrate` so `resume_id` is guaranteed to exist even on a
@@ -84,6 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_job_posts_resume ON job_posts(resume_id);
 CREATE INDEX IF NOT EXISTS idx_apply_later_resume ON apply_later(resume_id);
 CREATE INDEX IF NOT EXISTS idx_interview_resume ON interview_topics(resume_id);
 CREATE INDEX IF NOT EXISTS idx_keyword_resume ON jd_keyword_observations(resume_id);
+CREATE INDEX IF NOT EXISTS idx_sent_emails_resume ON sent_emails(resume_id);
 """
 
 
@@ -125,6 +140,28 @@ def _migrate_personal_info(conn: sqlite3.Connection, default_resume_id: str) -> 
     conn.execute("DROP TABLE personal_info_old")
 
 
+_APPLY_LATER_TRACKER_COLUMNS = (
+    "tier",
+    "role_title",
+    "status",
+    "referral",
+    "date_applied",
+    "next_follow_up",
+    "interview_round",
+    "salary_discussed",
+)
+
+
+def _migrate_apply_later_tracker_columns(conn: sqlite3.Connection) -> None:
+    """Add the application-tracker fields to `apply_later` (tier, status
+    pipeline, referral, dates, interview round, salary) for rows saved
+    before this upgrade — `status` defaults to 'Not Applied' so existing
+    entries render sensibly instead of showing blank."""
+    for column in _APPLY_LATER_TRACKER_COLUMNS:
+        _add_column_if_missing(conn, "apply_later", column)
+    conn.execute("UPDATE apply_later SET status = 'Not Applied' WHERE status IS NULL")
+
+
 def _migrate(conn: sqlite3.Connection, default_resume_id: str) -> None:
     """Backfill `resume_id` on rows saved before multi-resume support existed."""
     for table in ("job_posts", "apply_later", "interview_topics", "jd_keyword_observations"):
@@ -133,6 +170,7 @@ def _migrate(conn: sqlite3.Connection, default_resume_id: str) -> None:
             f"UPDATE {table} SET resume_id = ? WHERE resume_id IS NULL", (default_resume_id,)
         )
     _migrate_personal_info(conn, default_resume_id)
+    _migrate_apply_later_tracker_columns(conn)
     conn.commit()
 
 

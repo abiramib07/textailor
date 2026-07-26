@@ -1,6 +1,6 @@
 # Job Application Tracker — upgrade Apply Later
 
-**Status:** Proposed
+**Status:** Shipped
 **Date:** 2026-07-18
 
 ## Context
@@ -58,8 +58,42 @@ PATCH-only-what's-provided logic to the new columns.
   ordering) at the top of the tab instead of a separate Legend/Tips view —
   consistent with how other Career tabs already show a one-line hint.
 
-## Explicitly not doing
+## Explicitly not doing (original scope)
 
 - No `.xlsx` export / `openpyxl` dependency.
 - No search/pre-fill agent — could revisit later, seeding from the existing
   `job_posts` / post-archive data instead of a live web search.
+
+## Addendum 2026-07-18 — "Find Jobs" pre-fill agent added
+
+After seeing a standalone `openpyxl` script (built separately, see
+`job-search/`) that web-searches real postings before tracking starts, the
+user asked for that same convenience in-app — reversing the "no pre-fill"
+call above.
+
+**New agent:** `src/agents/job_finder.py` — calls the Claude Code CLI with
+`--allowedTools WebSearch` (added as an `allowed_tools` param on
+`claude_client.ask_claude`, previously text-only) so it runs real, grounded
+web searches rather than generating from the model's own knowledge. Prompt
+explicitly forbids fabricating companies/links/salaries and instructs it to
+return fewer than the requested count rather than pad with invented rows.
+
+**New route:** `POST /api/career/apply-later/search` (`ApplyLaterSearch`
+schema: `resume_id`, `query`, `years_experience`, `location`, `count`) —
+calls the agent, inserts each real result as a new `apply_later` row
+(status `'Not Applied'`), returns the inserted entries plus the agent's
+`search_note` caveat sentence. Wrapped in try/except → `502` since this is
+a live external-call boundary (web search + LLM JSON parsing) unlike the
+app's other agents.
+
+**Frontend:** a "Find Jobs" panel above the manual add-form in the
+Application Tracker tab (query / years / location / count fields, a
+"Search for openings" button with a spinner — this takes 1–5 minutes since
+it runs several searches — and the search note shown as a banner on
+completion).
+
+Verified live end-to-end: a real search for "GenAI RAG LangGraph AI ML
+engineer", 3 yrs, India returned 3 real LinkedIn postings with honest notes
+(e.g. flagged one requiring 4-6 yrs instead of 3, one from an
+agency-for-undisclosed-client) and a search_note explaining what was
+excluded and why — confirming the agent doesn't fabricate.

@@ -60,6 +60,10 @@ export interface BoostResult {
   message?: string;
 }
 
+export interface AddSkillsResult extends BoostResult {
+  added: string[];
+}
+
 export interface VerifierKeyword {
   keyword: string;
   status: 'exact' | 'semantic' | 'missing';
@@ -114,10 +118,16 @@ export class ResumeService {
   }
 
   /** Defaults to the app-wide active resume; pass `resumeId` to target a specific
-   * one instead (e.g. a resume still being curated in the Import tab). */
+   * one instead (e.g. a resume still being curated in the Import tab).
+   * Includes a cache-busting timestamp so a repeated call with the same
+   * resume id still produces a new URL — otherwise an `<iframe [src]>`
+   * bound to an unchanged string won't re-navigate even after the PDF
+   * on disk changes. */
   templateUrl(resumeId?: string): string {
     const rid = resumeId ?? this.resumeId;
-    return rid ? `${API}/api/template?resume_id=${encodeURIComponent(rid)}` : `${API}/api/template`;
+    const base = rid ? `${API}/api/template?resume_id=${encodeURIComponent(rid)}` : `${API}/api/template`;
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}t=${Date.now()}`;
   }
 
   chatPlan(message: string, resumeId?: string): Observable<ChatPlanResult> {
@@ -149,6 +159,22 @@ export class ResumeService {
     return this.http.post<BoostResult>(`${API}/api/boost/${taskId}`, {
       selected_keywords: selectedKeywords,
     });
+  }
+
+  /** Fast, deterministic alternative to `boostAts` — adds the selected
+   * missing keywords straight into the Technical Skills table, no AI
+   * rewrite involved. */
+  addSkillsToResume(taskId: string, selectedKeywords: string[]): Observable<AddSkillsResult> {
+    return this.http.post<AddSkillsResult>(`${API}/api/boost/add-skills/${taskId}`, {
+      selected_keywords: selectedKeywords,
+    });
+  }
+
+  /** Recompute the ATS score from whatever's currently on disk — call this
+   * after a chat edit (which patches the resume directly, outside the
+   * pipeline) to see its effect without re-running the whole generation. */
+  rescoreTask(taskId: string): Observable<ScoreReport> {
+    return this.http.post<ScoreReport>(`${API}/api/rescore/${taskId}`, {});
   }
 
   getResumeMd(): Observable<{ content: string }> {

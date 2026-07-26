@@ -228,6 +228,79 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+
+  &.input-panel--collapsed {
+    padding: 0;
+    overflow: hidden;
+  }
+}
+
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.panel-collapse-btn {
+  background: transparent;
+  border: 1px solid #2d3148;
+  color: #64748b;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+
+  &:hover { border-color: #818cf8; color: #818cf8; }
+}
+
+.panel-collapse-strip {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+  transition: background 0.15s, color 0.15s;
+
+  span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 8px;
+  }
+
+  &:hover { background: #151926; color: #818cf8; }
+}
+
+/* Drag handles between panels — vertical bar resizes width (JD ↔ preview),
+   horizontal bar resizes height (preview ↔ chat). */
+.panel-resize-handle {
+  flex-shrink: 0;
+  background: #2d3148;
+  transition: background 0.15s;
+
+  &:hover { background: #6366f1; }
+}
+
+.panel-resize-handle--vertical {
+  width: 5px;
+  cursor: col-resize;
+}
+
+.panel-resize-handle--horizontal {
+  height: 5px;
+  border-radius: 3px;
+  cursor: row-resize;
+  margin: 4px 0;
 }
 
 .panel-title {
@@ -579,10 +652,63 @@
   padding: 2px 7px;
   border-radius: 4px;
   font-weight: 500;
+  font-family: inherit;
 
   &--found   { background: #052e16; color: #4ade80; border: 1px solid #14532d; }
   &--missing { background: #2d1515; color: #fca5a5; border: 1px solid #7f1d1d; }
+
+  &--clickable {
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+
+    &:hover { border-color: #ef4444; background: #3a1a1a; }
+  }
+
+  &--selected {
+    background: #1e2a1a !important;
+    color: #86efac !important;
+    border-color: #166534 !important;
+  }
 }
+
+.kw-select-hint {
+  font-size: 10.5px;
+  color: #475569;
+  margin: 4px 0 0;
+}
+
+.kw-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #151926;
+  border: 1px solid #2d3148;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.kw-action-count {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 600;
+  margin-right: auto;
+}
+
+.kw-action-clear {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+
+  &:hover { color: #e2e8f0; }
+}
+
+.kw-action-btn { width: auto; padding: 6px 14px; font-size: 12px; }
 
 .report-hint { font-size: 11px; color: #64748b; }
 
@@ -626,6 +752,14 @@
 .boost-done {
   font-size: 12px;
   color: #4ade80;
+  font-weight: 500;
+  text-align: center;
+  padding: 4px;
+}
+
+.boost-error {
+  font-size: 12px;
+  color: #f87171;
   font-weight: 500;
   text-align: center;
   padding: 4px;
@@ -694,6 +828,14 @@
   border: none;
   background: #fff;
   display: block;
+
+  /* While dragging a splitter, block the iframe from capturing mouse
+     events — it has its own document, so once the cursor crosses over it
+     the parent window stops receiving mousemove and the drag appears to
+     silently stop tracking. */
+  &--drag-guard {
+    pointer-events: none;
+  }
 }
 
 .pdf-empty {
@@ -787,6 +929,26 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #64748b;
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-chat-collapse {
+  background: transparent;
+  border: 1px solid #2d3148;
+  color: #64748b;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 10px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+
+  &:hover { border-color: #818cf8; color: #818cf8; }
 }
 
 .btn-undo-chat {
@@ -913,6 +1075,23 @@
   transition: border-color 0.15s, color 0.15s;
 
   &:hover { border-color: #ef4444; color: #ef4444; }
+}
+
+.btn-rescore {
+  display: block;
+  margin-top: 8px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover:not(:disabled) { background: rgba(99, 102, 241, 0.28); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .chat-input-row {
@@ -1352,6 +1531,26 @@
   margin-top: 4px;
 }
 
+.applied-date-row {
+  display: flex;
+  gap: 8px;
+
+  input { flex: 1; }
+}
+
+.applied-date-today-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  border-radius: 6px;
+  border: 1px solid #374151;
+
+  &.applied-date-today-btn--active {
+    border-color: #6366f1;
+    color: #6366f1;
+  }
+}
+
 /* ── History sidebar ── */
 .history-backdrop {
   position: fixed;
@@ -1581,52 +1780,3 @@
   .modal-input { flex: 1; }
 }
 
-/* ── Boost keyword checklist ── */
-.boost-checklist-card {
-  width: 440px;
-}
-
-.boost-checklist-list {
-  max-height: 320px;
-  overflow-y: auto;
-  margin: 14px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.boost-checklist-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #e2e8f0;
-
-  &:hover { background: #1a1d27; }
-
-  input[type='checkbox'] {
-    width: 15px;
-    height: 15px;
-    accent-color: #6366f1;
-    flex-shrink: 0;
-  }
-
-  span:nth-child(2) { flex: 1; }
-}
-
-.boost-checklist-tag {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
-
-  &.boost-checklist-tag--required {
-    background: rgba(239, 68, 68, 0.15);
-    color: #f87171;
-  }
-}

@@ -49,6 +49,10 @@ export interface ChatMessage {
   text: string;
   planId?: string;
   changesPreview?: string[];
+  /** Shows a "Recheck ATS Score" action under this message — set on a
+   * successful edit/undo while a Generator task is active, since the edit
+   * patches the resume directly and the displayed score card goes stale. */
+  canRescore?: boolean;
 }
 
 type Tab =
@@ -100,6 +104,92 @@ export class App implements OnInit, OnDestroy {
   // ── Auth (session, if any) ──────────────────────────────────────
   authUser: UserProfile | null = null;
   authChecked = false;
+
+  // ── Generator layout — resizable/collapsible panels ──────────────
+  // JD panel (left) — collapse to a thin strip, or drag the splitter to
+  // resize, so the resume preview can take the width it needs.
+  inputPanelCollapsed = false;
+  inputPanelWidth = 380;
+  private static readonly INPUT_PANEL_MIN = 260;
+  private static readonly INPUT_PANEL_MAX = 900;
+  private _resizingInput = false;
+  private _inputResizeStartX = 0;
+  private _inputResizeStartWidth = 0;
+
+  // Chat panel (bottom of the right column) — collapse it, or drag the
+  // splitter above it, so the PDF preview above gets the height it needs.
+  chatPanelCollapsed = false;
+  chatPanelHeight = 260;
+  private static readonly CHAT_PANEL_MIN = 120;
+  private static readonly CHAT_PANEL_MAX = 640;
+  private _resizingChat = false;
+  private _chatResizeStartY = 0;
+  private _chatResizeStartHeight = 0;
+
+  toggleInputPanel() {
+    this.inputPanelCollapsed = !this.inputPanelCollapsed;
+  }
+
+  toggleChatPanel() {
+    this.chatPanelCollapsed = !this.chatPanelCollapsed;
+  }
+
+  /** True while either splitter is being dragged — used to disable pointer
+   * events on the PDF iframe(s) mid-drag. Without this, the moment the
+   * cursor crosses over an iframe (which sits right next to both handles),
+   * the parent window stops receiving mousemove — the iframe has its own
+   * document and swallows the event — and the drag appears to just stop
+   * responding partway through. */
+  get isResizingLayout(): boolean {
+    return this._resizingInput || this._resizingChat;
+  }
+
+  startInputResize(event: MouseEvent) {
+    if (this.inputPanelCollapsed) return;
+    this._resizingInput = true;
+    this._inputResizeStartX = event.clientX;
+    this._inputResizeStartWidth = this.inputPanelWidth;
+    event.preventDefault();
+    this.cdr.detectChanges();
+  }
+
+  startChatResize(event: MouseEvent) {
+    if (this.chatPanelCollapsed) return;
+    this._resizingChat = true;
+    this._chatResizeStartY = event.clientY;
+    this._chatResizeStartHeight = this.chatPanelHeight;
+    event.preventDefault();
+    this.cdr.detectChanges();
+  }
+
+  @HostListener('window:mousemove', ['$event'])
+  onLayoutResizeMove(event: MouseEvent) {
+    if (this._resizingInput) {
+      const delta = event.clientX - this._inputResizeStartX;
+      const next = this._inputResizeStartWidth + delta;
+      this.inputPanelWidth = Math.min(
+        App.INPUT_PANEL_MAX,
+        Math.max(App.INPUT_PANEL_MIN, next),
+      );
+      this.cdr.detectChanges();
+    }
+    if (this._resizingChat) {
+      // Handle sits above the chat panel — dragging up (negative deltaY)
+      // should grow it, so the delta is inverted relative to mouse Y.
+      const delta = this._chatResizeStartY - event.clientY;
+      const next = this._chatResizeStartHeight + delta;
+      this.chatPanelHeight = Math.min(App.CHAT_PANEL_MAX, Math.max(App.CHAT_PANEL_MIN, next));
+      this.cdr.detectChanges();
+    }
+  }
+
+  @HostListener('window:mouseup')
+  onLayoutResizeEnd() {
+    const wasResizing = this._resizingInput || this._resizingChat;
+    this._resizingInput = false;
+    this._resizingChat = false;
+    if (wasResizing) this.cdr.detectChanges();
+  }
 
   // ── Resume identity switcher ──────────────────────────────────────
   showResumeMenu = false;
@@ -207,7 +297,7 @@ export class App implements OnInit, OnDestroy {
   showCareerMenu = false;
   careerTabs: { tab: Tab; label: string }[] = [
     { tab: 'personal-info', label: 'Personal Info' },
-    { tab: 'apply-later', label: 'Apply Later' },
+    { tab: 'apply-later', label: 'Application Tracker' },
     { tab: 'post-archive', label: 'LinkedIn Archive' },
     { tab: 'interview-prep', label: 'Interview Prep' },
     { tab: 'topic-mapping', label: 'Topic Mapping' },
@@ -255,6 +345,14 @@ export class App implements OnInit, OnDestroy {
   boostScore: number | null = null;
   boostPdfUrl: SafeResourceUrl | null = null;
   boostPdfRawUrl: string | null = null;
+  boostError = '';
+  private _boostErrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // ── Add-to-skills state (fast, non-AI alternative to Boost) ──────
+  isAddingSkills = false;
+
+  // ── Rescore state (after a chat edit) ────────────────────────────
+  isRescoring = false;
 
   // ── Verifier state ──────────────────────────────────────────────
   verifierResult: VerifierResult | null = null;
@@ -363,6 +461,11 @@ export class App implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
+  onTailorResume(jobPost: string) {
+    this.jd = jobPost;
+    this.setTab('generate');
+  }
+
   // ── PDF active in viewer ────────────────────────────────────────
   get activePdfUrl(): SafeResourceUrl | null {
     return this.boostPdfUrl ?? this.chatPdfUrl ?? this.pdfUrl;
@@ -388,8 +491,7 @@ export class App implements OnInit, OnDestroy {
     this.boostScore = null;
     this.boostPdfUrl = null;
     this.boostPdfRawUrl = null;
-    this.showBoostChecklist = false;
-    this.boostCandidates = [];
+    this.selectedMissingKeywords.clear();
     this.showTemplate = false;
     this.localSteps = pendingSteps();
     this.historySaved = false;
@@ -452,9 +554,8 @@ export class App implements OnInit, OnDestroy {
     } else if (this.showAddResumeModal) {
       this.cancelAddResumeModal();
       this.cdr.detectChanges();
-    } else if (this.showBoostChecklist) {
-      this.cancelBoostChecklist();
-      this.cdr.detectChanges();
+    } else if (this.selectedMissingKeywords.size > 0) {
+      this.clearKeywordSelection();
     } else if (this.historySidebar !== 'closed') {
       this.setHistorySidebarState('closed');
     } else if (this.showCareerMenu) {
@@ -520,6 +621,23 @@ export class App implements OnInit, OnDestroy {
 
   cancelSaveHistoryForm() {
     this.showSaveHistoryForm = false;
+  }
+
+  /** Fills the applied-date field with today's date, formatted for
+   * `<input type="date">` (YYYY-MM-DD) — a quick alternative to picking
+   * today from the calendar by hand. */
+  setAppliedDateToday() {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    this.saveHistoryAppliedDate = `${now.getFullYear()}-${month}-${day}`;
+  }
+
+  get isAppliedDateToday(): boolean {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return this.saveHistoryAppliedDate === `${now.getFullYear()}-${month}-${day}`;
   }
 
   confirmSaveHistory() {
@@ -683,59 +801,140 @@ export class App implements OnInit, OnDestroy {
   }
 
   // ── ATS Boost ───────────────────────────────────────────────────
-  // Selecting which missing keywords to weave in (rather than boosting with
-  // all of them blindly) avoids claiming skills the user doesn't actually have.
-  showBoostChecklist = false;
-  boostCandidates: { keyword: string; required: boolean; checked: boolean }[] = [];
+  // Missing keywords are clicked directly in the report (required or
+  // preferred, same mechanism for both) to build a selection, rather than
+  // routing through a separate modal — the modal wasn't being found/used.
+  selectedMissingKeywords = new Set<string>();
 
-  openBoostChecklist() {
-    if (!this.reportData) return;
-    this.boostCandidates = [
-      ...this.reportData.required_missing.map((keyword) => ({ keyword, required: true, checked: false })),
-      ...this.reportData.preferred_missing.map((keyword) => ({ keyword, required: false, checked: false })),
-    ];
-    this.showBoostChecklist = true;
+  toggleKeywordSelection(keyword: string) {
+    if (this.selectedMissingKeywords.has(keyword)) {
+      this.selectedMissingKeywords.delete(keyword);
+    } else {
+      this.selectedMissingKeywords.add(keyword);
+    }
     this.cdr.detectChanges();
   }
 
-  cancelBoostChecklist() {
-    this.showBoostChecklist = false;
+  isKeywordSelected(keyword: string): boolean {
+    return this.selectedMissingKeywords.has(keyword);
   }
 
-  get boostSelectedCount(): number {
-    return this.boostCandidates.filter((c) => c.checked).length;
+  get selectedKeywordCount(): number {
+    return this.selectedMissingKeywords.size;
+  }
+
+  selectAllMissingKeywords() {
+    if (!this.reportData) return;
+    for (const kw of [...this.reportData.required_missing, ...this.reportData.preferred_missing]) {
+      this.selectedMissingKeywords.add(kw);
+    }
+    this.cdr.detectChanges();
+  }
+
+  clearKeywordSelection() {
+    this.selectedMissingKeywords.clear();
+    this.cdr.detectChanges();
   }
 
   confirmBoostSelection() {
-    const selected = this.boostCandidates.filter((c) => c.checked).map((c) => c.keyword);
-    this.showBoostChecklist = false;
+    const selected = [...this.selectedMissingKeywords];
+    this.selectedMissingKeywords.clear();
     this.boostAts(selected);
   }
 
   boostAts(selectedKeywords: string[]) {
     if (!this.taskId || this.isBoosting || selectedKeywords.length === 0) return;
+    const taskId = this.taskId;
     this.isBoosting = true;
     this.cdr.detectChanges();
 
-    this.svc.boostAts(this.taskId, selectedKeywords).subscribe({
+    this.svc.boostAts(taskId, selectedKeywords).subscribe({
       next: (result) => {
         this.boostScore = result.score;
         if (result.has_pdf && result.boost_id) {
           this.boostPdfRawUrl = this.svc.chatPdfUrl(result.boost_id);
           this.boostPdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.boostPdfRawUrl);
         }
-        if (this.reportData) {
-          this.reportData = {
-            ...this.reportData,
-            overall_score: result.score,
-            verdict: result.verdict,
-          };
-        }
+        // Full refresh (not a manual patch) so found/missing lists reflect
+        // reality — the rewrite may have touched more than just the
+        // keywords that were selected.
+        this._loadReport(taskId);
         this.isBoosting = false;
         this.cdr.detectChanges();
       },
-      error: () => {
+      error: (err) => {
+        this._showBoostError(err?.error?.detail ?? "Couldn't weave in those keywords — please try again.");
         this.isBoosting = false;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  /** Shows a friendly, transient notification for a failed Weave-in/Add-to-
+   * Skills call — these used to fail silently, leaving the keyword chips
+   * selectable again with no indication anything had gone wrong. */
+  private _showBoostError(message: string) {
+    this.boostError = message;
+    if (this._boostErrorTimer) clearTimeout(this._boostErrorTimer);
+    this._boostErrorTimer = setTimeout(() => {
+      this.boostError = '';
+      this.cdr.detectChanges();
+    }, 6000);
+  }
+
+  /** Fast, deterministic alternative to Boost — adds the checked keywords
+   * straight into the Technical Skills table with no AI rewrite. */
+  confirmAddToSkillsSelection() {
+    const selected = [...this.selectedMissingKeywords];
+    this.selectedMissingKeywords.clear();
+    this.addSkillsToResume(selected);
+  }
+
+  addSkillsToResume(selectedKeywords: string[]) {
+    if (!this.taskId || this.isAddingSkills || selectedKeywords.length === 0) return;
+    const taskId = this.taskId;
+    this.isAddingSkills = true;
+    this.cdr.detectChanges();
+
+    this.svc.addSkillsToResume(taskId, selectedKeywords).subscribe({
+      next: (result) => {
+        this.boostScore = result.score;
+        if (result.has_pdf && result.boost_id) {
+          this.boostPdfRawUrl = this.svc.chatPdfUrl(result.boost_id);
+          this.boostPdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.boostPdfRawUrl);
+        }
+        this._loadReport(taskId);
+        this.isAddingSkills = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this._showBoostError(err?.error?.detail ?? "Couldn't add those skills — please try again.");
+        this.isAddingSkills = false;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  /** Re-run the ATS score against whatever's currently on disk — for use
+   * right after a chat edit, which patches the resume directly rather than
+   * going through the pipeline, so the score card would otherwise go stale. */
+  rescoreAfterChatEdit() {
+    if (!this.taskId || this.isRescoring) return;
+    const taskId = this.taskId;
+    this.isRescoring = true;
+    this.cdr.detectChanges();
+
+    this.svc.rescoreTask(taskId).subscribe({
+      next: (report) => {
+        this.boostScore = report.overall_score;
+        this.reportData = report;
+        this.isRescoring = false;
+        this._pushMsg({ role: 'bot', text: `Rechecked — now at ${report.overall_score}% (${report.verdict}).` });
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.isRescoring = false;
+        this._pushMsg({ role: 'error', text: 'Could not recheck the score. Please try again.' });
         this.cdr.detectChanges();
       },
     });
@@ -796,7 +995,11 @@ export class App implements OnInit, OnDestroy {
     this.svc.chatExecute(planId, message).subscribe({
       next: (result) => {
         if (result.success) {
-          this._pushMsg({ role: 'bot', text: '✓ ' + result.done_summary });
+          this._pushMsg({
+            role: 'bot',
+            text: '✓ ' + result.done_summary,
+            canRescore: !!this.taskId,
+          });
           if (result.has_pdf) {
             this.chatPdfRawUrl = this.svc.chatPdfUrl(result.edit_id);
             this.chatPdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.chatPdfRawUrl);
@@ -832,7 +1035,11 @@ export class App implements OnInit, OnDestroy {
 
     this.svc.chatUndo().subscribe({
       next: (result) => {
-        this._pushMsg({ role: result.success ? 'bot' : 'error', text: result.done_summary });
+        this._pushMsg({
+          role: result.success ? 'bot' : 'error',
+          text: result.done_summary,
+          canRescore: result.success && !!this.taskId,
+        });
         if (result.success && result.has_pdf) {
           this.chatPdfRawUrl = this.svc.chatPdfUrl(result.edit_id);
           this.chatPdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.chatPdfRawUrl);

@@ -135,8 +135,33 @@
   @if (activeTab === 'generate') {
     <main class="layout">
       <!-- LEFT: JD input + pipeline status + score + report -->
-      <section class="panel input-panel">
-        <h2 class="panel-title">Job Description</h2>
+      <section
+        class="panel input-panel"
+        [class.input-panel--collapsed]="inputPanelCollapsed"
+        [style.width.px]="inputPanelCollapsed ? 44 : inputPanelWidth"
+        [style.flexBasis.px]="inputPanelCollapsed ? 44 : inputPanelWidth"
+      >
+        @if (inputPanelCollapsed) {
+          <button
+            type="button"
+            class="panel-collapse-strip"
+            (click)="toggleInputPanel()"
+            title="Expand Job Description panel"
+          >
+            ▶ <span>Job Description</span>
+          </button>
+        } @else {
+        <div class="panel-header-row">
+          <h2 class="panel-title">Job Description</h2>
+          <button
+            type="button"
+            class="panel-collapse-btn"
+            (click)="toggleInputPanel()"
+            title="Collapse panel — see the resume preview at full width"
+          >
+            ◀ Collapse
+          </button>
+        </div>
         <textarea
           class="jd-area"
           [(ngModel)]="jd"
@@ -265,7 +290,21 @@
             </div>
             <div class="auth-field">
               <label for="history-applied-date">Applied date (optional)</label>
-              <input id="history-applied-date" type="date" [(ngModel)]="saveHistoryAppliedDate" />
+              <div class="applied-date-row">
+                <input
+                  id="history-applied-date"
+                  type="date"
+                  [(ngModel)]="saveHistoryAppliedDate"
+                />
+                <button
+                  type="button"
+                  class="btn-ghost applied-date-today-btn"
+                  [class.applied-date-today-btn--active]="isAppliedDateToday"
+                  (click)="setAppliedDateToday()"
+                >
+                  Today
+                </button>
+              </div>
             </div>
             <div class="history-save-actions">
               <button class="btn-secondary action-btn" (click)="cancelSaveHistoryForm()">
@@ -304,7 +343,14 @@
                     <span class="kw kw--found">✓ {{ kw }}</span>
                   }
                   @for (kw of reportData.required_missing; track kw) {
-                    <span class="kw kw--missing">✗ {{ kw }}</span>
+                    <button
+                      type="button"
+                      class="kw kw--missing kw--clickable"
+                      [class.kw--selected]="isKeywordSelected(kw)"
+                      (click)="toggleKeywordSelection(kw)"
+                    >
+                      {{ isKeywordSelected(kw) ? '✓' : '✗' }} {{ kw }}
+                    </button>
                   }
                 </div>
               }
@@ -324,11 +370,43 @@
                     <span class="kw kw--found">✓ {{ kw }}</span>
                   }
                   @for (kw of reportData.preferred_missing; track kw) {
-                    <span class="kw kw--missing">✗ {{ kw }}</span>
+                    <button
+                      type="button"
+                      class="kw kw--missing kw--clickable"
+                      [class.kw--selected]="isKeywordSelected(kw)"
+                      (click)="toggleKeywordSelection(kw)"
+                    >
+                      {{ isKeywordSelected(kw) ? '✓' : '✗' }} {{ kw }}
+                    </button>
                   }
                 </div>
               }
             </div>
+            @if (reportData.required_missing.length + reportData.preferred_missing.length > 0) {
+              <p class="kw-select-hint">Click a missing keyword above to select it, then add it below.</p>
+            }
+            @if (selectedKeywordCount > 0) {
+              <div class="kw-action-bar">
+                <span class="kw-action-count">{{ selectedKeywordCount }} selected</span>
+                <button type="button" class="kw-action-clear" (click)="clearKeywordSelection()">Clear</button>
+                <button
+                  type="button"
+                  class="btn-secondary action-btn kw-action-btn"
+                  [disabled]="isAddingSkills"
+                  (click)="confirmAddToSkillsSelection()"
+                >
+                  {{ isAddingSkills ? 'Adding…' : '+ Add to Skills' }}
+                </button>
+                <button
+                  type="button"
+                  class="btn-primary action-btn kw-action-btn"
+                  [disabled]="isBoosting"
+                  (click)="confirmBoostSelection()"
+                >
+                  {{ isBoosting ? 'Weaving in…' : 'Weave in with AI' }}
+                </button>
+              </div>
+            }
             @if (reportData.needs_metric_count > 0) {
               <div class="report-section">
                 <div class="report-section-title warn-title">
@@ -340,30 +418,28 @@
               </div>
             }
             <!-- Boost banner -->
-            @if (reportData.overall_score < 90 && !boostScore) {
+            @if (reportData.overall_score < 90 && !boostScore && selectedKeywordCount === 0) {
               <div class="boost-banner">
                 <div class="boost-banner-text">
                   <strong>Score is {{ reportData.overall_score }}% — below 90%.</strong>
                   <span
-                    >Weave in
-                    {{
-                      reportData.required_missing.length + reportData.preferred_missing.length
-                    }}
-                    missing keywords automatically?</span
+                    >Click keywords above to select them, or</span
                   >
                 </div>
-                <button class="btn-boost" (click)="openBoostChecklist()" [disabled]="isBoosting">
-                  @if (!isBoosting) {
-                    <span>Boost to 90%+</span>
-                  }
-                  @if (isBoosting) {
-                    <span class="spinner-label"><span class="spinner"></span> Boosting…</span>
-                  }
+                <button
+                  class="btn-boost"
+                  (click)="selectAllMissingKeywords()"
+                  [disabled]="isBoosting || isAddingSkills"
+                >
+                  select all {{ reportData.required_missing.length + reportData.preferred_missing.length }} missing
                 </button>
               </div>
             }
             @if (boostScore) {
-              <div class="boost-done">✓ Boosted to {{ boostScore }}% — new PDF loaded.</div>
+              <div class="boost-done">✓ Now at {{ boostScore }}% — new PDF loaded.</div>
+            }
+            @if (boostError) {
+              <div class="boost-error">⚠ {{ boostError }}</div>
             }
             <!-- ── Verifier agent ── -->
             <div class="report-section verifier-section">
@@ -499,7 +575,9 @@
         @if (status?.status === 'error') {
           <div class="error-box">{{ status!.error }}</div>
         }
+        }
       </section>
+      <div class="panel-resize-handle panel-resize-handle--vertical" (mousedown)="startInputResize($event)"></div>
       <!-- RIGHT: PDF viewer + Chat editor -->
       <section class="panel pdf-panel">
         <div class="pdf-header">
@@ -521,10 +599,10 @@
         <!-- PDF iframe area -->
         <div class="pdf-frame-wrap">
           @if (activePdfUrl) {
-            <iframe [src]="activePdfUrl" class="pdf-frame" title="Resume Preview"></iframe>
+            <iframe [src]="activePdfUrl" class="pdf-frame" [class.pdf-frame--drag-guard]="isResizingLayout" title="Resume Preview"></iframe>
           }
           @if (showTemplatePdf) {
-            <iframe [src]="templateUrl" class="pdf-frame" title="Template Preview"></iframe>
+            <iframe [src]="templateUrl" class="pdf-frame" [class.pdf-frame--drag-guard]="isResizingLayout" title="Template Preview"></iframe>
           }
           @if (!activePdfUrl && !showTemplatePdf) {
             <div class="pdf-empty">
@@ -556,18 +634,34 @@
         </div>
         <!-- ── Chat editor ── -->
         @if (activePdfUrl) {
-          <div class="chat-panel">
+          @if (!chatPanelCollapsed) {
+            <div class="panel-resize-handle panel-resize-handle--horizontal" (mousedown)="startChatResize($event)"></div>
+          }
+          <div class="chat-panel" [style.height.px]="chatPanelCollapsed ? 48 : chatPanelHeight">
             <div class="chat-header">
               <span class="chat-title">Edit via Chat</span>
-              <button
-                class="btn-undo-chat"
-                (click)="undoChat()"
-                [disabled]="chatState !== 'idle'"
-                title="Undo last chat change"
-              >
-                ↩ Undo
-              </button>
+              <div class="chat-header-actions">
+                @if (!chatPanelCollapsed) {
+                  <button
+                    class="btn-undo-chat"
+                    (click)="undoChat()"
+                    [disabled]="chatState !== 'idle'"
+                    title="Undo last chat change"
+                  >
+                    ↩ Undo
+                  </button>
+                }
+                <button
+                  type="button"
+                  class="btn-chat-collapse"
+                  (click)="toggleChatPanel()"
+                  [title]="chatPanelCollapsed ? 'Expand chat panel' : 'Collapse chat panel — see the resume preview at full height'"
+                >
+                  {{ chatPanelCollapsed ? '▲' : '▼' }}
+                </button>
+              </div>
             </div>
+            @if (!chatPanelCollapsed) {
             <div class="chat-messages" #chatScroll>
               @if (chatMessages.length === 0) {
                 <div class="chat-hint">
@@ -603,6 +697,16 @@
                         <button class="btn-cancel-plan" (click)="cancelPlan()">No, cancel</button>
                       </div>
                     }
+                    @if (msg.canRescore) {
+                      <button
+                        type="button"
+                        class="btn-rescore"
+                        [disabled]="isRescoring"
+                        (click)="rescoreAfterChatEdit()"
+                      >
+                        {{ isRescoring ? 'Rechecking…' : '🔄 Recheck ATS Score' }}
+                      </button>
+                    }
                   </div>
                 </div>
               }
@@ -635,6 +739,7 @@
                 Send
               </button>
             </div>
+            }
           </div>
         }
         <!-- Chat prompt when no PDF yet -->
@@ -796,7 +901,7 @@
   <!--  back — e.g. running a resume tailor and an email draft at once. -->
   <!-- ══════════════════════════════════════════════════ -->
   <main class="layout email-generator-layout" [class.tab-hidden]="activeTab !== 'email-generator'">
-    <app-email-generator></app-email-generator>
+    <app-email-generator (tailorResume)="onTailorResume($event)"></app-email-generator>
   </main>
 
   <!-- ══════════════════════════════════════════════════ -->
@@ -908,45 +1013,6 @@
         }
       </div>
     </aside>
-  }
-
-  <!-- ── Boost keyword checklist modal ── -->
-  @if (showBoostChecklist) {
-    <!-- Mouse-only convenience dismiss; keyboard users close via Escape (handled in app.ts). -->
-    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
-    <div class="modal-overlay" (click)="cancelBoostChecklist()">
-      <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
-      <div class="modal-card boost-checklist-card" (click)="$event.stopPropagation()">
-        <h3 class="modal-title">Which of these do you actually have?</h3>
-        <p class="modal-hint">
-          Only checked keywords get woven into your resume — this keeps the boost honest
-          instead of claiming skills you don't have.
-        </p>
-
-        <div class="boost-checklist-list">
-          @for (c of boostCandidates; track c.keyword) {
-            <label class="boost-checklist-row">
-              <input type="checkbox" [(ngModel)]="c.checked" />
-              <span>{{ c.keyword }}</span>
-              <span class="boost-checklist-tag" [class.boost-checklist-tag--required]="c.required">
-                {{ c.required ? 'Required' : 'Preferred' }}
-              </span>
-            </label>
-          }
-        </div>
-
-        <div class="modal-actions">
-          <button class="btn-secondary action-btn" (click)="cancelBoostChecklist()">Cancel</button>
-          <button
-            class="btn-primary action-btn"
-            [disabled]="boostSelectedCount === 0"
-            (click)="confirmBoostSelection()"
-          >
-            Weave in {{ boostSelectedCount }} keyword{{ boostSelectedCount === 1 ? '' : 's' }}
-          </button>
-        </div>
-      </div>
-    </div>
   }
 
   <!-- ── Add resume modal ── -->

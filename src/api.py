@@ -26,12 +26,14 @@ from agents.chat_editor import execute as chat_execute
 from agents.chat_editor import plan as chat_plan
 from agents.chat_editor import undo as chat_undo
 from agents.email_generator import generate_email, revise_email
+from agents.email_sender import send_email
 from agents.recruiter import analyze
 from agents.rewriter import rewrite
 from agents.verifier import explain_keyword, verify
 from auth.db import init_db as init_auth_db
 from auth.router import router as auth_router
 from career.db import init_db as init_career_db
+from career.email_link import save_email_context
 from career.router import router as career_router
 from career.topic_mapping import log_keywords as log_jd_keywords
 from compiler import compile_tex
@@ -43,8 +45,8 @@ from history import init_db as init_history_db
 from history import list_entries as history_list
 from history import save_entry as history_save
 from latex_parser import parse_resume, strip_latex
+from latex_patcher import add_skills_row, write_tailored_tex
 from latex_patcher import patch as patch_tex
-from latex_patcher import write_tailored_tex
 from main import load_config
 from notifier import notify_email_done, notify_resume_done, notify_resume_failed
 from resumes.db import get_default_resume, get_resume, resolve_resume_id
@@ -52,9 +54,21 @@ from resumes.db import init_db as init_resumes_db
 from resumes.router import router as resumes_router
 
 # ── Logging ───────────────────────────────────────────────────────────────────
-# Don't call basicConfig here — uvicorn configures the root logger at startup.
-# Our named logger inherits uvicorn's handlers automatically.
+# uvicorn's --log-level only configures its OWN loggers ("uvicorn",
+# "uvicorn.error", "uvicorn.access"), not the root logger — a bare
+# getLogger("textailor") with no handler of its own silently drops every
+# record (Python's root logger defaults to WARNING with no handler). Attach
+# our own handler so INFO-level execution trace actually reaches the console
+# regardless of how uvicorn was started.
 log = logging.getLogger("textailor")
+log.setLevel(logging.INFO)
+if not log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)-7s [%(name)s] %(message)s", "%H:%M:%S")
+    )
+    log.addHandler(_handler)
+    log.propagate = False
 
 app = FastAPI(title="TexTailor API")
 
@@ -226,6 +240,7 @@ def _pipeline(task_id: str, jd: str, config: dict, resume_path: str, resume_id: 
 
         _tasks[task_id]["status"] = "done"
         _tasks[task_id]["pdf_path"] = pdf_path
+        _tasks[task_id]["tex_path"] = tex_out
         _tasks[task_id]["score"] = score_result["overall_score"]
         _tasks[task_id]["verdict"] = score_result["verdict"]
         _tasks[task_id]["score_result"] = score_result
@@ -320,7 +335,9 @@ def get_pdf(task_id: str) -> FileResponse:
     if not pdf.exists():
         raise HTTPException(status_code=404, detail="PDF file missing")
     return FileResponse(
-        str(pdf), media_type="application/pdf", headers={"Content-Disposition": "inline"}
+        str(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline", "Cache-Control": "no-store"},
     )
 
 
@@ -427,7 +444,9 @@ def get_chat_pdf(edit_id: str):
     if not pdf_path or not Path(pdf_path).exists():
         raise HTTPException(status_code=404, detail="Chat PDF not available")
     return FileResponse(
-        str(pdf_path), media_type="application/pdf", headers={"Content-Disposition": "inline"}
+        str(pdf_path),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline", "Cache-Control": "no-store"},
     )
 
 
@@ -497,7 +516,21 @@ def post_boost(task_id: str, req: BoostRequest | None = None):
     if not recruiter_result or not score_result or not out_dir_str:
         raise HTTPException(status_code=400, detail="Missing pipeline data — re-generate first")
 
-    _, resume_path = _resolve_resume(task.get("resume_id"))
+    # Build on top of whatever's already tailored for THIS task, not the
+    # pristine base resume — otherwise each Weave-in click re-tailors from
+    # scratch with only the newly selected keywords, throwing away every
+    # keyword the initial /api/generate pass (or an earlier Weave-in click on
+    # this same task) already wove in. Read the path from the task's own
+    # state (set by the pipeline / a prior boost below) rather than checking
+    # which files exist in `out_dir` — that directory is keyed only by job
+    # title + date, so two tasks generated the same day for the same role
+    # share it, and a directory-existence check would silently pick up a
+    # stale `resume_boosted.tex` left over from a *different* task.
+    out_dir = Path(out_dir_str)
+    resume_path = task.get("tex_path")
+    if not resume_path:
+        _, resume_path = _resolve_resume(task.get("resume_id"))
+
     all_missing = score_result["required_missing"] + score_result["preferred_missing"]
     selected = req.selected_keywords if req and req.selected_keywords is not None else all_missing
     # Keep only keywords that are actually missing — ignore anything stale/unexpected.
@@ -512,23 +545,47 @@ def post_boost(task_id: str, req: BoostRequest | None = None):
             "message": "No keywords selected — nothing to weave in.",
         }
 
-    resume_data = parse_resume(resume_path)
-    rewritten = rewrite(
-        sections=resume_data["sections"],
-        priority_keywords=selected,
-        key_action_verbs=recruiter_result.get("key_action_verbs", []),
-        sections_to_rewrite=["Professional Summary", "Experience", "Technical Skills"],
+    log.info(
+        "Weave-in START  task=%s  keywords=%d  before_score=%s%%  selected=%s",
+        task_id,
+        len(selected),
+        score_result["overall_score"],
+        selected,
     )
+    t_start = time.monotonic()
 
-    out_dir = Path(out_dir_str)
-    tex_out = str(out_dir / "resume_boosted.tex")
-    write_tailored_tex(
-        original_tex=resume_data["raw_tex"],
-        rewritten_sections=rewritten,
-        original_sections=resume_data["sections"],
-        output_path=tex_out,
-    )
-    pdf_path = compile_tex(tex_out)
+    try:
+        resume_data = parse_resume(resume_path)
+        # Technical Skills is a structured `\skillrow` table, not prose — let
+        # the AI rewrite only the narrative sections (where "weave in
+        # naturally" actually means something) and add the keywords to the
+        # skills table the same deterministic, non-destructive way "Add to
+        # Skills" does. An earlier version let the AI rewrite Technical
+        # Skills too, and it would drop unrelated existing skills (AWS,
+        # MLOps, etc.) while restructuring the table to fit the new ones in.
+        rewritten = rewrite(
+            sections=resume_data["sections"],
+            priority_keywords=selected,
+            key_action_verbs=recruiter_result.get("key_action_verbs", []),
+            sections_to_rewrite=["Professional Summary", "Experience"],
+        )
+        if "Technical Skills" in resume_data["sections"]:
+            rewritten["Technical Skills"] = add_skills_row(
+                resume_data["sections"]["Technical Skills"], selected
+            )
+
+        tex_out = str(out_dir / "resume_boosted.tex")
+        write_tailored_tex(
+            original_tex=resume_data["raw_tex"],
+            rewritten_sections=rewritten,
+            original_sections=resume_data["sections"],
+            output_path=tex_out,
+        )
+        log.info("Weave-in: compiling %s", tex_out)
+        pdf_path = compile_tex(tex_out)
+    except Exception as exc:
+        log.exception("Weave-in FAILED  task=%s  after %.1fs", task_id, time.monotonic() - t_start)
+        raise HTTPException(status_code=500, detail=f"Weave-in failed: {exc}") from exc
 
     full_patched_tex = patch_tex(resume_data["raw_tex"], rewritten, resume_data["sections"])
     new_score = score(recruiter_result, strip_latex(full_patched_tex))
@@ -538,10 +595,33 @@ def post_boost(task_id: str, req: BoostRequest | None = None):
     task["score"] = new_score["overall_score"]
     task["verdict"] = new_score["verdict"]
     task["pdf_path"] = pdf_path
+    task["tex_path"] = tex_out
 
     boost_id = str(uuid.uuid4())
     _chat_pdfs[boost_id] = pdf_path
-    log.info("Boost complete  score=%s%%  boost_id=%s", new_score["overall_score"], boost_id)
+
+    before_score = score_result["overall_score"]
+    after_score = new_score["overall_score"]
+    log.info(
+        "Weave-in DONE  task=%s  boost_id=%s  score %.1f%% -> %.1f%%  elapsed=%.1fs",
+        task_id,
+        boost_id,
+        before_score,
+        after_score,
+        time.monotonic() - t_start,
+    )
+    if after_score < before_score:
+        newly_missing = sorted(
+            set(new_score["required_missing"] + new_score["preferred_missing"]) - set(all_missing)
+        )
+        log.warning(
+            "Weave-in REGRESSED score for task=%s (%.1f%% -> %.1f%%) — "
+            "keywords now missing that were previously found: %s",
+            task_id,
+            before_score,
+            after_score,
+            newly_missing,
+        )
 
     return {
         "boost_id": boost_id,
@@ -549,6 +629,144 @@ def post_boost(task_id: str, req: BoostRequest | None = None):
         "verdict": new_score["verdict"],
         "has_pdf": True,
     }
+
+
+class AddSkillsRequest(BaseModel):
+    """Body for POST /api/boost/add-skills/{task_id}."""
+
+    selected_keywords: list[str]
+
+
+@app.post("/api/boost/add-skills/{task_id}")
+def post_add_skills(task_id: str, req: AddSkillsRequest):
+    """Directly add selected missing keywords into the Technical Skills
+    table, grouped under the most relevant existing or new category row.
+
+    A fast, deterministic alternative to the full AI-rewrite boost: no LLM
+    call, so it can't misattribute a skill — it only adds exactly what the
+    user checked off.
+    """
+    task = _tasks.get(task_id)
+    if not task or task.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Task not complete or not found")
+
+    recruiter_result = task.get("recruiter_result")
+    score_result = task.get("score_result")
+    out_dir_str = task.get("out_dir")
+    if not recruiter_result or not score_result or not out_dir_str:
+        raise HTTPException(status_code=400, detail="Missing pipeline data — re-generate first")
+
+    all_missing = score_result["required_missing"] + score_result["preferred_missing"]
+    selected = [kw for kw in req.selected_keywords if kw in all_missing]
+    if not selected:
+        return {
+            "boost_id": None,
+            "score": score_result["overall_score"],
+            "verdict": score_result["verdict"],
+            "has_pdf": False,
+            "added": [],
+            "message": "No keywords selected — nothing added.",
+        }
+
+    # Build on top of whatever's already tailored for this task (see the
+    # matching comment in post_boost above) rather than the pristine base
+    # resume, so this doesn't throw away keywords the initial /api/generate
+    # pass — or an earlier Weave-in/Add-to-Skills click on this same task —
+    # already added.
+    resume_path = task.get("tex_path")
+    if not resume_path:
+        _, resume_path = _resolve_resume(task.get("resume_id"))
+
+    log.info(
+        "Add-to-Skills START  task=%s  keywords=%d  before_score=%s%%  selected=%s",
+        task_id,
+        len(selected),
+        score_result["overall_score"],
+        selected,
+    )
+    t_start = time.monotonic()
+
+    try:
+        resume_data = parse_resume(resume_path)
+        skills_section = resume_data["sections"].get("Technical Skills", "")
+        if not skills_section:
+            raise HTTPException(
+                status_code=400, detail="No Technical Skills section found to add to"
+            )
+
+        rewritten = {"Technical Skills": add_skills_row(skills_section, selected)}
+
+        out_dir = Path(out_dir_str)
+        tex_out = str(out_dir / "resume_skills_added.tex")
+        write_tailored_tex(
+            original_tex=resume_data["raw_tex"],
+            rewritten_sections=rewritten,
+            original_sections=resume_data["sections"],
+            output_path=tex_out,
+        )
+        pdf_path = compile_tex(tex_out)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception(
+            "Add-to-Skills FAILED  task=%s  after %.1fs", task_id, time.monotonic() - t_start
+        )
+        raise HTTPException(status_code=500, detail=f"Add-to-Skills failed: {exc}") from exc
+
+    full_patched_tex = patch_tex(resume_data["raw_tex"], rewritten, resume_data["sections"])
+    new_score = score(recruiter_result, strip_latex(full_patched_tex))
+    write_report(new_score, str(out_dir / "ats_report_skills_added.txt"))
+
+    task["score_result"] = new_score
+    task["score"] = new_score["overall_score"]
+    task["verdict"] = new_score["verdict"]
+    task["pdf_path"] = pdf_path
+    task["tex_path"] = tex_out
+
+    boost_id = str(uuid.uuid4())
+    _chat_pdfs[boost_id] = pdf_path
+    log.info(
+        "Add-to-Skills DONE  task=%s  boost_id=%s  score %.1f%% -> %.1f%%  elapsed=%.1fs",
+        task_id,
+        boost_id,
+        score_result["overall_score"],
+        new_score["overall_score"],
+        time.monotonic() - t_start,
+    )
+
+    return {
+        "boost_id": boost_id,
+        "score": new_score["overall_score"],
+        "verdict": new_score["verdict"],
+        "has_pdf": True,
+        "added": selected,
+    }
+
+
+@app.post("/api/rescore/{task_id}")
+def post_rescore(task_id: str):
+    """Recompute the ATS score from whatever is currently on disk for this
+    task's resume identity — used after a chat edit (which patches the
+    resume file directly, outside the pipeline) to see its effect on the
+    score without re-running the whole generation."""
+    task = _tasks.get(task_id)
+    if not task or task.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Task not complete or not found")
+
+    recruiter_result = task.get("recruiter_result")
+    if not recruiter_result:
+        raise HTTPException(status_code=400, detail="Missing pipeline data — re-generate first")
+
+    _, resume_path = _resolve_resume(task.get("resume_id"))
+    resume_data = parse_resume(resume_path)
+    new_score = score(recruiter_result, resume_data["plain_text"])
+
+    task["score_result"] = new_score
+    task["score"] = new_score["overall_score"]
+    task["verdict"] = new_score["verdict"]
+    log.info("Rescore complete  task_id=%s  score=%s%%", task_id, new_score["overall_score"])
+
+    return new_score
 
 
 # ── Resume MD editor endpoints ────────────────────────────────────────────────
@@ -644,7 +862,9 @@ def get_template(resume_id: str | None = None) -> FileResponse:
     if not pdf.exists():
         raise HTTPException(status_code=500, detail="Template PDF could not be produced")
     return FileResponse(
-        str(pdf), media_type="application/pdf", headers={"Content-Disposition": "inline"}
+        str(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline", "Cache-Control": "no-store"},
     )
 
 
@@ -700,7 +920,9 @@ def get_history_pdf(entry_id: str) -> FileResponse:
     if not pdf.exists():
         raise HTTPException(status_code=404, detail="PDF file no longer exists on disk")
     return FileResponse(
-        str(pdf), media_type="application/pdf", headers={"Content-Disposition": "inline"}
+        str(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline", "Cache-Control": "no-store"},
     )
 
 
@@ -708,14 +930,18 @@ def get_history_pdf(entry_id: str) -> FileResponse:
 
 
 def _tailored_tex_text(task: dict) -> str:
-    out_dir = task.get("out_dir")
-    if not out_dir:
+    # Read the path this task's own pipeline/boost run recorded rather than
+    # guessing from what files exist in `out_dir` — that directory is keyed
+    # only by job title + date, so two tasks generated the same day for the
+    # same role share it, and an existence check can silently return a
+    # different task's tailored resume.
+    tex_path_str = task.get("tex_path")
+    if not tex_path_str:
         raise HTTPException(status_code=400, detail="No tailored resume available for this task")
-    candidates = [Path(out_dir) / "resume_boosted.tex", Path(out_dir) / "resume_tailored.tex"]
-    for tex_path in candidates:
-        if tex_path.exists():
-            return strip_latex(tex_path.read_text(encoding="utf-8"))
-    raise HTTPException(status_code=404, detail="Tailored resume file not found on disk")
+    tex_path = Path(tex_path_str)
+    if not tex_path.exists():
+        raise HTTPException(status_code=404, detail="Tailored resume file not found on disk")
+    return strip_latex(tex_path.read_text(encoding="utf-8"))
 
 
 @app.post("/api/verify/{task_id}")
@@ -761,6 +987,7 @@ class EmailGenerateRequest(BaseModel):
     job_post: str
     instruction: str = ""
     resume_id: str | None = None
+    source_url: str = ""
 
 
 class EmailReviseRequest(BaseModel):
@@ -774,6 +1001,32 @@ class EmailUndoRequest(BaseModel):
     """Body for POST /api/email/undo."""
 
     email_id: str
+
+
+class EmailUpdateRequest(BaseModel):
+    """Body for POST /api/email/{email_id}/update — direct manual edit,
+    bypassing the LLM revise flow."""
+
+    to: str
+    subject: str
+    body: str
+
+
+class EmailSaveRequest(BaseModel):
+    """Body for POST /api/email/{email_id}/save."""
+
+    company_name: str = ""
+    role_title: str = ""
+    source_url: str = ""
+
+
+class EmailSendRequest(BaseModel):
+    """Body for POST /api/email/{email_id}/send."""
+
+    to: str
+
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def _resume_plain_text(resume_id: str | None) -> str:
@@ -803,6 +1056,9 @@ def email_generate(req: EmailGenerateRequest) -> dict:
         "subject": result.get("subject", ""),
         "body": result.get("body", ""),
         "role_title": result.get("role_title", ""),
+        "company_name": result.get("company_name", ""),
+        "job_post": req.job_post,
+        "source_url": req.source_url.strip(),
         "history": [],
         "resume_id": resume_id,
     }
@@ -840,6 +1096,7 @@ def email_revise(req: EmailReviseRequest) -> dict:
         "subject": current["subject"],
         "body": current["body"],
         "role_title": current["role_title"],
+        "company_name": current["company_name"],
         "done_summary": result.get("done_summary", "Updated the email."),
     }
 
@@ -863,6 +1120,111 @@ def email_undo(req: EmailUndoRequest) -> dict:
         "subject": current["subject"],
         "body": current["body"],
     }
+
+
+@app.post("/api/email/{email_id}/update")
+def email_update(email_id: str, req: EmailUpdateRequest) -> dict:
+    """Directly overwrite a draft's to/subject/body with a manual edit —
+    no LLM call, so the user can fix anything (like a placeholder sign-off)
+    themselves without waiting on a revise round-trip."""
+    current = _emails.get(email_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Email draft not found")
+
+    current["history"].append(
+        {"to": current["to"], "subject": current["subject"], "body": current["body"]}
+    )
+    current["to"] = req.to
+    current["subject"] = req.subject
+    current["body"] = req.body
+    log.info("Email manually edited  email_id=%s", email_id)
+    return {
+        "email_id": email_id,
+        "to": current["to"],
+        "subject": current["subject"],
+        "body": current["body"],
+        "role_title": current["role_title"],
+        "company_name": current["company_name"],
+    }
+
+
+@app.post("/api/email/{email_id}/save")
+def email_save(email_id: str, req: EmailSaveRequest) -> dict:
+    """Save a finalized email into the career tracker: link or update its
+    Apply Later row (status Applied), then auto-populate the topic map and
+    interview-prep checklist from the job post's keywords."""
+    current = _emails.get(email_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Email draft not found")
+
+    company_name = req.company_name.strip() or current.get("company_name", "")
+    role_title = req.role_title.strip() or current.get("role_title", "")
+    source_url = req.source_url.strip() or current.get("source_url", "")
+    if not company_name:
+        raise HTTPException(status_code=400, detail="Company name is required to save")
+
+    resume_id = current["resume_id"]
+    try:
+        resume_text = _resume_plain_text(resume_id)
+        summary = save_email_context(
+            email_id=email_id,
+            resume_id=resume_id,
+            company_name=company_name,
+            role_title=role_title,
+            to_addr=current["to"],
+            subject=current["subject"],
+            body=current["body"],
+            source_url=source_url,
+            job_post_text=current.get("job_post", ""),
+            resume_plain_text=resume_text,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not save email: {exc}") from exc
+    current["company_name"] = company_name
+    current["role_title"] = role_title
+    current["source_url"] = source_url
+    log.info(
+        "Email saved  email_id=%s  company=%s  apply_later_id=%s",
+        email_id,
+        company_name,
+        summary["apply_later_id"],
+    )
+    return {"email_id": email_id, "company_name": company_name, "role_title": role_title, **summary}
+
+
+@app.post("/api/email/{email_id}/send")
+def email_send(email_id: str, req: EmailSendRequest) -> dict:
+    """Send a finalized email over Gmail SMTP with the current resume
+    attached as a freshly compiled PDF."""
+    current = _emails.get(email_id)
+    if not current:
+        raise HTTPException(status_code=404, detail="Email draft not found")
+
+    to_addr = req.to.strip()
+    if not _EMAIL_RE.match(to_addr):
+        raise HTTPException(status_code=400, detail="Enter a valid recipient email address")
+
+    resume_id = current["resume_id"]
+    _, tex_path = _resolve_resume(resume_id)
+    resume = get_resume(resume_id)
+    label = (resume or {}).get("label") or "resume"
+    safe_name = re.sub(r"[^\w\-]", "_", label)
+
+    try:
+        pdf_path = compile_tex(tex_path)
+        pdf_bytes = Path(pdf_path).read_bytes()
+        send_email(
+            to_addr=to_addr,
+            subject=current["subject"],
+            body=current["body"],
+            pdf_bytes=pdf_bytes,
+            pdf_filename=f"{safe_name}.pdf",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not send email: {exc}") from exc
+
+    log.info("Email sent  email_id=%s  to=%s", email_id, to_addr)
+    return {"email_id": email_id, "to": to_addr}
 
 
 @app.get("/api/email/{email_id}/download")

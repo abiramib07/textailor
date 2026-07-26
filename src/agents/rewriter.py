@@ -2,12 +2,16 @@
 description's missing keywords and action verbs, one Claude call per section.
 """
 
+import logging
 import re
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from claude_client import ask_claude
+
+log = logging.getLogger("textailor.rewriter")
 
 _PROMPT = """You are an expert resume writer specialising in ATS-optimised LaTeX resumes.
 
@@ -17,15 +21,24 @@ RULES:
 1. Rewrite bullet points using Google XYZ formula: "Accomplished [X], as measured by [Y], by doing [Z]"
 2. Weave in the MISSING KEYWORDS naturally — do not stuff them; they must fit contextually
 3. Mirror the JD's ACTION VERBS where possible (use them to start bullets)
-4. Never invent metrics or experience — if a bullet has no measurable result, improve language only and mark it with %NEEDS_METRIC at the end of that line
+4. Never invent metrics or experience — if a bullet has no measurable result, improve language only
+   and mark it by appending " %NEEDS_METRIC" AFTER the bullet command's closing brace, never before
+   it: \\bulletitem{{Improved onboarding flow.}} %NEEDS_METRIC — putting it inside the braces (e.g.
+   \\bulletitem{{...text. %NEEDS_METRIC}}) is a bug: the unescaped % starts a LaTeX comment right
+   there, silently swallowing the closing brace and breaking compilation
 5. Preserve ALL LaTeX commands exactly: \\item[], \\textbf{{}}, \\hfill, \\vspace{{}}, \\begin{{itemize}}, etc.
 6. Only modify the human-readable text INSIDE \\item[] blocks and section prose
 7. Do NOT touch the structure, spacing commands, or custom macros
 8. ESCAPE these characters in all plain text: & → \\& (P\\&L not P&L), % → \\% (except comment lines starting with %), # → \\#
-9. Output ONLY the rewritten LaTeX section content — no markers, no explanation, no markdown fences,
-   no notes, no tables, and no commentary about your choices anywhere before, inside, or after the
-   LaTeX. Your entire response must be valid LaTeX and nothing else — it gets inserted directly into
-   the .tex file and compiled as-is.
+9. CRITICAL — never remove or reword any technology name, tool, platform, or skill that already
+   appears in the ORIGINAL content below, even if it isn't in the MISSING KEYWORDS list. You may
+   ONLY ADD the missing keywords on top of what's already there — do not drop or paraphrase away
+   an existing one to make room. The candidate is already getting ATS credit for every keyword
+   currently present; silently losing one is worse than failing to add a new one.
+10. Output ONLY the rewritten LaTeX section content — no markers, no explanation, no markdown fences,
+    no notes, no tables, and no commentary about your choices anywhere before, inside, or after the
+    LaTeX. Your entire response must be valid LaTeX and nothing else — it gets inserted directly into
+    the .tex file and compiled as-is.
 
 MISSING KEYWORDS TO INCORPORATE (only if contextually honest):
 {keywords}
@@ -60,6 +73,14 @@ def _strip_leaked_commentary(tex: str) -> str:
             or re.match(r"^\*\*notes\b", stripped, re.IGNORECASE)
             or re.match(r"^notes on\b", stripped, re.IGNORECASE)
         ):
+            cut_lines = len(lines) - i
+            if cut_lines > 0:
+                log.warning(
+                    "Truncated %d trailing line(s) of leaked commentary "
+                    "(triggered by: %r) — verify this wasn't real content",
+                    cut_lines,
+                    stripped[:60],
+                )
             return "\n".join(lines[:i]).rstrip()
     return tex
 
@@ -71,9 +92,28 @@ def _rewrite_section(name: str, content: str, keywords: list, verbs: list) -> st
         keywords="\n".join(f"- {kw}" for kw in keywords),
         verbs=", ".join(verbs),
     )
+    t_start = time.monotonic()
     raw = ask_claude(prompt)
+    elapsed = time.monotonic() - t_start
     cleaned = _strip_leaked_commentary(raw.strip())
-    return _escape_ampersands(cleaned.strip())
+    result = _escape_ampersands(cleaned.strip())
+    log.info(
+        "  %s: %d chars in -> %d chars raw -> %d chars final (%.1fs)",
+        name,
+        len(content),
+        len(raw),
+        len(result),
+        elapsed,
+    )
+    if len(result) < len(content) * 0.5:
+        log.warning(
+            "  %s: rewritten content is less than half the length of the original "
+            "(%d -> %d chars) — likely truncated or over-compressed",
+            name,
+            len(content),
+            len(result),
+        )
+    return result
 
 
 def rewrite(
@@ -90,14 +130,14 @@ def rewrite(
     for name in sections_to_rewrite:
         if name not in sections:
             continue
-        print(f"[rewriter] rewriting section: {name}", flush=True)
+        log.info("rewriting section: %s (%d keywords to weave in)", name, len(priority_keywords))
         try:
             result[name] = _rewrite_section(
                 name, sections[name], priority_keywords, key_action_verbs
             )
-            print(f"[rewriter] done: {name}", flush=True)
-        except Exception as e:
-            print(f"[rewriter] WARN: {name} failed ({e}) — keeping original", flush=True)
+            log.info("done: %s", name)
+        except Exception:
+            log.exception("%s failed — keeping original section unchanged", name)
             result[name] = sections[name]
     return result
 

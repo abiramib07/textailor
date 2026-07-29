@@ -3,6 +3,27 @@
 End-of-day log, newest entry on top. Short bullets — what got done, not a
 narrative. See `CLAUDE.md` → "Git hygiene".
 
+## 2026-07-26
+- Categorized "Add to Skills" / "Weave in with AI" additions instead of dumping everything into one generic "Additional Skills" row:
+  - `latex_patcher.add_skills_row()` now maps each selected keyword to the best-fit existing Technical Skills category (word-boundary-safe rule matching against category themes — AI Frameworks, Generative AI / NLP, Agentic Architectures, DevOps / Cloud, Data & Vector Stores, etc.), appending to a matching row or creating a well-named new one (e.g. "Data Processing & Analysis") only when nothing fits
+  - Verified against the user's exact pasted skill list — every keyword landed under the correct heading
+- Removed the floating Personal Info Clipboard widget from every tab (reversing an earlier explicit request) — deleted `career/personal-info-widget/` entirely; the dedicated Career Tools → Personal Info page is untouched
+- Fixed backend logging: the `"textailor"` logger had no handler of its own, so every `log.info(...)` in `api.py` was silently discarded regardless of uvicorn's `--log-level` (uvicorn only configures its own loggers, not root) — attached a real handler so execution trace actually shows up
+- Diagnosed and fixed the "Weave in with AI" ATS score regression (reported: score dropping ~66% → 33%), via a live smoke test against the real Claude CLI on an isolated backend instance:
+  - Frontend silently swallowed Weave-in / Add-to-Skills failures with no message — now shows a real toast (`boostError`)
+  - Rewriter prompt sometimes placed `%NEEDS_METRIC` *before* the closing `}` of `\bulletitem{}`, turning the brace into a LaTeX comment and breaking `pdflatex` compilation outright — fixed the prompt wording, added an explicit correct-vs-wrong example
+  - **Root cause**: Weave-in and Add-to-Skills always re-tailored from the pristine base resume instead of building on the task's own already-tailored output, silently discarding every keyword the initial `/api/generate` pass (or an earlier boost click) had already woven in — fixed by tracking each task's own `tex_path` in task state instead of guessing from directory file-existence (which could also silently pick up a stale file left over from a *different* task sharing the same job-title+date output directory — same bug also fixed in the Verifier's `_tailored_tex_text`)
+  - Stopped letting the AI freely rewrite the structured Technical Skills table during Weave-in; it now goes through the same deterministic categorization path as Add-to-Skills, so it can no longer drop unrelated existing skills while restructuring
+  - Added a "never remove existing keywords" rule to the rewrite prompt (defense in depth) and a regression-detection warning log (lists which previously-found keywords went missing, if any)
+  - **Verified live**: two consecutive Weave-in clicks on the same task went 74.7% → 85.3% → 89.3%, cumulative, no regressions, no compile failures
+- Gitignored a stray scratch verification PDF (`resume/_verify.pdf`) and deleted it
+- Split the accumulated session work into 6 logical commits: `1b6a733` (resume content), `112f3ba` (tracker/job-finder/skills-seed backend), `25f4e59` (tracker/job-finder frontend), `767f804` (email send/save), `e6ed256` (Weave-in fixes + logging + categorization), `5029bb5` (worklog/gitignore housekeeping)
+
+## Next up (2026-07-26)
+- Manually click through the Generator tab in a real browser: the new boost-error toast, the categorized skills-table result after Weave-in/Add-to-Skills, and the Personal Info tab now that the floating widget is gone — everything above was only verified via curl/log trace + `ng lint`/`ng build`, not an actual browser pass (no browser automation tool available this session)
+- The `out_dir` naming scheme (`{job_title}_{date}`, not keyed by `task_id`) is still shared across same-day/same-title tasks — the `tex_path` task-state fix closes the practical impact for Weave-in/Add-to-Skills/Verifier, but PDF paths and report files in that directory can still collide; consider suffixing filenames with a short task-id fragment
+- Carried over from 2026-07-19, still unresolved: root-cause the `min_salary_lpa` Find Jobs failure (see below), write the design-plan addendum for the Find Jobs streaming/salary-filter rework, manually click through the Find Jobs panel in a browser
+
 ## 2026-07-19
 - Shipped "Save Email Context" in the Email Generator (see `docs/design-plans/2026-07-19-email-save-context.md`):
   - `agents/email_generator.py` now extracts `company_name` alongside `role_title`

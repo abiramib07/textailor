@@ -99,8 +99,13 @@ def strip_latex(text: str) -> str:
     """Convert LaTeX markup to plain text for AI consumption."""
     # Normalize line endings
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    # Remove comment lines (% through end of line, handles %%%%%... blocks)
-    text = re.sub(r"%[^\n]*", "", text)
+    # Remove comment lines (% through end of line, handles %%%%%... blocks) —
+    # but NOT an escaped \% (e.g. "85\% answer relevance..."), which is real
+    # content, not a comment marker. Without the negative lookbehind, this
+    # used to truncate any bullet containing a literal percent (a very common
+    # resume metric) at the first \%, silently deleting everything after it
+    # on that line.
+    text = re.sub(r"(?<!\\)%[^\n]*", "", text)
     # LaTeX line breaks, with an optional [<length>] spacing arg → space
     text = re.sub(r"\\\\(\[[^\]]*\])?", " ", text)
     # Escaped special chars
@@ -118,9 +123,42 @@ def strip_latex(text: str) -> str:
         "",
         text,
     )
-    # Unwrap formatting commands — keep inner text
-    for cmd in ["textbf", "textit", "emph", "underline", "textsc", "textrm", "sl"]:
+    # Unwrap formatting commands — keep inner text. Order matters: this is a
+    # single-level unwrap (`[^}]*` doesn't cross nested braces), so each
+    # command only unwraps correctly once anything nested INSIDE it has
+    # already been flattened to bare text by an earlier pass. That's why
+    # `bulletitem` (innermost) comes before `bulletpoints` (its outer
+    # wrapper) — a bullet like `\bulletpoints{\bulletitem{Built \textbf{RAG}
+    # pipelines}}` needs textbf flattened first, then bulletitem, then
+    # bulletpoints, in that order.
+    #
+    # Without this, every one of this template's structural macros —
+    # `\bulletitem`, `\bulletpoints`, `\techline`, `\projectheading` — falls
+    # through to the generic "delete any unrecognised \command{...}" cleanup
+    # below, which deletes the command AND its content. That used to
+    # silently wipe every resume bullet, every "Technologies: ..." line, and
+    # every project title from the plain text the recruiter/scorer agents
+    # actually see.
+    for cmd in [
+        "textbf",
+        "textit",
+        "emph",
+        "underline",
+        "textsc",
+        "textrm",
+        "sl",
+        "bulletitem",
+        "bulletpoints",
+        "techline",
+        "projectheading",
+    ]:
         text = re.sub(rf"\\{cmd}\{{([^}}]*)\}}", r"\1", text)
+    # \jobheading{role}{company}{location}{dates} — keep all four fields,
+    # space-separated (the generic cleanup below would otherwise drop the
+    # role title and mash company/location/dates together with no spacing).
+    text = re.sub(r"\\jobheading\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}", r"\1 \2 \3 \4", text)
+    # \skillrow{category}{items} — keep the category label alongside its items.
+    text = re.sub(r"\\skillrow\{([^}]*)\}\{([^}]*)\}", r"\1: \2", text)
     # href — keep display text only
     text = re.sub(r"\\href\{[^}]*\}\{([^}]*)\}", r"\1", text)
     # spacing / layout commands with args

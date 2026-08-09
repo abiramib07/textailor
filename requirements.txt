@@ -16,3 +16,6 @@ pydantic[email]>=2.10
 # Resume importer (src/agents/resume_importer.py) — PDF/Word text extraction
 pypdf>=5.0
 python-docx>=1.2
+
+# Testing
+pytest>=8.0

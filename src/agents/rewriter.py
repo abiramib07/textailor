@@ -6,6 +6,7 @@ import logging
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -55,6 +56,35 @@ def _escape_ampersands(tex: str) -> str:
     return re.sub(r"(?<!\\)&", r"\\&", tex)
 
 
+def _looks_like_rewritten_latex(original: str, candidate: str) -> tuple[bool, str]:
+    """Reject a Claude response that reads as conversational commentary
+    rather than actual rewritten LaTeX resume content.
+
+    The prompt (rule 10) demands LaTeX-only output, but rule 4 ("never
+    invent metrics or experience") and "only if contextually honest" on
+    keywords create a genuine conflict when the JD's missing keywords
+    describe a domain the candidate has no experience in — Claude
+    sometimes resolves that conflict by explaining the concern in prose
+    instead of complying with rule 10. Nothing downstream validates the
+    response before splicing it into the .tex file, so unchecked prose
+    silently replaces real resume content and still compiles (LaTeX
+    tolerates plain text). Two independent, low-false-positive signals:
+    resume content never poses a question to the reader, and a rewrite is
+    required to preserve every existing LaTeX command (rule 9) — dropping
+    all of them is only plausible if the response isn't LaTeX at all.
+    """
+    if "?" in candidate:
+        return (
+            False,
+            "the response contains a question mark — resume content never asks the reader a question",
+        )
+    original_commands = set(re.findall(r"\\([a-zA-Z]+)", original))
+    candidate_commands = set(re.findall(r"\\([a-zA-Z]+)", candidate))
+    if original_commands and not candidate_commands:
+        return False, "the response dropped every LaTeX command present in the original section"
+    return True, ""
+
+
 def _strip_leaked_commentary(tex: str) -> str:
     """The prompt tells Claude to output ONLY LaTeX, but it sometimes still
     appends a trailing explanation of its choices (e.g. a "Notes on keyword
@@ -85,7 +115,10 @@ def _strip_leaked_commentary(tex: str) -> str:
     return tex
 
 
-def _rewrite_section(name: str, content: str, keywords: list, verbs: list) -> str:
+def _rewrite_section(name: str, content: str, keywords: list, verbs: list) -> tuple[str, str]:
+    """Return (content, warning) — `warning` is "" unless Claude's response
+    failed the LaTeX-content validation, in which case `content` is the
+    original, unmodified section and `warning` explains why to the caller."""
     prompt = _PROMPT.format(
         name=name,
         content=content,
@@ -97,6 +130,23 @@ def _rewrite_section(name: str, content: str, keywords: list, verbs: list) -> st
     elapsed = time.monotonic() - t_start
     cleaned = _strip_leaked_commentary(raw.strip())
     result = _escape_ampersands(cleaned.strip())
+
+    ok, reason = _looks_like_rewritten_latex(content, result)
+    if not ok:
+        log.warning(
+            "  %s: rejected Claude's response — %s. Keeping original section unchanged. "
+            "Raw response: %r",
+            name,
+            reason,
+            raw[:500],
+        )
+        warning = (
+            f'Kept the original "{name}" content unchanged — the AI declined to weave in '
+            f"the requested keywords honestly ({reason}) rather than fabricate matching "
+            "experience. Review the missing keywords for this section manually."
+        )
+        return content, warning
+
     log.info(
         "  %s: %d chars in -> %d chars raw -> %d chars final (%.1fs)",
         name,
@@ -113,7 +163,7 @@ def _rewrite_section(name: str, content: str, keywords: list, verbs: list) -> st
             len(content),
             len(result),
         )
-    return result
+    return result, ""
 
 
 def rewrite(
@@ -121,25 +171,60 @@ def rewrite(
     priority_keywords: list,
     key_action_verbs: list,
     sections_to_rewrite: list | None = None,
-) -> dict:
-    """Call Claude once per section to avoid timeout on large prompts."""
+) -> tuple[dict, list[str]]:
+    """Call Claude once per section, in parallel, to avoid timeout on large
+    prompts and to avoid paying each section's Claude CLI cold-start cost
+    sequentially — sections are independent of each other, so a
+    ThreadPoolExecutor collapses wall-clock time to roughly the slowest
+    single section instead of the sum of all of them.
+
+    Returns (rewritten_sections, warnings) — `warnings` lists any section
+    kept unchanged because Claude's response failed content validation
+    (see `_looks_like_rewritten_latex`), so callers can surface this to the
+    end user instead of it disappearing silently. Both the result dict's
+    key order and the warnings list order match `sections_to_rewrite`'s
+    order, not completion order, so callers see the same deterministic
+    ordering the previous sequential implementation produced.
+    """
     if sections_to_rewrite is None:
         sections_to_rewrite = [k for k in sections if k != "Education"]
 
-    result = {}
+    # Filter to sections that actually exist, then dedupe (first
+    # occurrence wins the position) — a duplicate name must not trigger a
+    # wasted extra Claude call.
+    seen: set[str] = set()
+    names: list[str] = []
     for name in sections_to_rewrite:
-        if name not in sections:
-            continue
+        if name in sections and name not in seen:
+            seen.add(name)
+            names.append(name)
+
+    if not names:
+        return {}, []
+
+    def _run(name: str) -> tuple[str, str]:
         log.info("rewriting section: %s (%d keywords to weave in)", name, len(priority_keywords))
-        try:
-            result[name] = _rewrite_section(
-                name, sections[name], priority_keywords, key_action_verbs
-            )
-            log.info("done: %s", name)
-        except Exception:
-            log.exception("%s failed — keeping original section unchanged", name)
-            result[name] = sections[name]
-    return result
+        return _rewrite_section(name, sections[name], priority_keywords, key_action_verbs)
+
+    result: dict[str, str] = {}
+    warning_map: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=len(names)) as executor:
+        futures = {executor.submit(_run, name): name for name in names}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                content, warning = future.result()
+                result[name] = content
+                if warning:
+                    warning_map[name] = warning
+                log.info("done: %s", name)
+            except Exception:
+                log.exception("%s failed — keeping original section unchanged", name)
+                result[name] = sections[name]
+
+    ordered_result = {name: result[name] for name in names}
+    warnings = [warning_map[name] for name in names if name in warning_map]
+    return ordered_result, warnings
 
 
 if __name__ == "__main__":
@@ -167,7 +252,7 @@ if __name__ == "__main__":
     recruiter_result = analyze(sample_jd, resume_data["plain_text"])
 
     print("Running Rewriter Agent ...\n")
-    result = rewrite(
+    result, warnings = rewrite(
         sections=resume_data["sections"],
         priority_keywords=recruiter_result["priority_adds"],
         key_action_verbs=recruiter_result["key_action_verbs"],
@@ -179,3 +264,8 @@ if __name__ == "__main__":
         print(f"SECTION: {name}")
         print("=" * 60)
         print(content[:800])
+
+    if warnings:
+        print(f"\n{'=' * 60}\nWARNINGS\n{'=' * 60}")
+        for w in warnings:
+            print(f"- {w}")

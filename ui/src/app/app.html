@@ -263,11 +263,15 @@
             </div>
           </div>
         }
-        <!-- ── Save to history ── -->
-        @if (status?.status === 'done' && !historySaved && !showSaveHistoryForm) {
-          <div class="history-save-row">
-            <span>Save this resume to your history?</span>
-            <button class="btn-ghost" (click)="openSaveHistoryForm()">Save to History</button>
+        <!-- ── Rewrite warnings — sections kept unchanged rather than fabricate ── -->
+        @if (rewriteWarnings.length > 0) {
+          <div class="rewrite-warning-banner">
+            <div class="rewrite-warning-heading">
+              ⚠ {{ rewriteWarnings.length }} section(s) kept unchanged
+            </div>
+            @for (w of rewriteWarnings; track w) {
+              <p class="rewrite-warning-line">{{ w }}</p>
+            }
           </div>
         }
         @if (showSaveHistoryForm) {

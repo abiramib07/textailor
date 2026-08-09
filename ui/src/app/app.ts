@@ -355,6 +355,9 @@ export class App implements OnInit, OnDestroy {
   isRescoring = false;
 
   // ── Verifier state ──────────────────────────────────────────────
+  // Sections the rewriter kept unchanged because the requested keywords
+  // couldn't be woven in honestly (e.g. a domain mismatch) — never silent.
+  boostWarnings: string[] = [];
   verifierResult: VerifierResult | null = null;
   verifierLoading = false;
   verifierError = '';
@@ -596,6 +599,7 @@ export class App implements OnInit, OnDestroy {
   }
 
   loadHistory() {
+    this.boostWarnings = [];
     this.historyLoading = true;
     this.svc.getHistory().subscribe({
       next: ({ entries }) => {
@@ -954,6 +958,14 @@ export class App implements OnInit, OnDestroy {
       next: (result) => {
         this.pendingPlan = {
           planId: result.plan_id,
+  /** Sections the AI kept unchanged rather than fabricate honesty-violating
+   * content (e.g. weaving a healthcare keyword into a fintech resume) —
+   * from the initial generate pass and/or a later Weave-in, so this is
+   * never silently lost. */
+  get rewriteWarnings(): string[] {
+    return [...(this.status?.warnings ?? []), ...this.boostWarnings];
+  }
+
           message: msg,
           summary: result.summary,
           changesPreview: result.changes_preview ?? [],
@@ -1047,6 +1059,7 @@ export class App implements OnInit, OnDestroy {
         this.chatState = 'idle';
         this.cdr.detectChanges();
       },
+        this.boostWarnings = result.warnings ?? [];
       error: () => {
         this._pushMsg({ role: 'error', text: 'Undo failed.' });
         this.chatState = 'idle';

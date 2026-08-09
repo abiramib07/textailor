@@ -199,13 +199,17 @@ def _pipeline(task_id: str, jd: str, config: dict, resume_path: str, resume_id: 
             "sections_to_rewrite",
             ["Career Objective", "Experience", "Projects", "Skills"],
         )
-        rewritten = rewrite(
+        rewritten, rewrite_warnings = rewrite(
             sections=resume_data["sections"],
             priority_keywords=recruiter_result["priority_adds"],
             key_action_verbs=recruiter_result["key_action_verbs"],
             sections_to_rewrite=sections_to_rewrite,
         )
-        _done_step(task_id, 2, t, f"Rewritten: {', '.join(rewritten.keys())}")
+        _tasks[task_id]["warnings"] = rewrite_warnings
+        detail = f"Rewritten: {', '.join(rewritten.keys())}"
+        if rewrite_warnings:
+            detail += f" — ⚠ {len(rewrite_warnings)} section(s) kept unchanged, see warnings"
+        _done_step(task_id, 2, t, detail)
 
         # Step 4 — Compile
         t = _start_step(task_id, 3)
@@ -298,6 +302,7 @@ def generate(req: GenerateRequest) -> dict:
         "pdf_path": None,
         "error": None,
         "resume_id": resume_id,
+        "warnings": [],
     }
     config = load_config()
     log.info("New request  task_id=%s  jd_length=%d chars", task_id, len(req.jd))
@@ -322,6 +327,7 @@ def get_status(task_id: str) -> dict:
         "verdict": task["verdict"],
         "error": task["error"],
         "has_pdf": task["pdf_path"] is not None and Path(task["pdf_path"]).exists(),
+        "warnings": task.get("warnings", []),
     }
 
 
@@ -543,6 +549,7 @@ def post_boost(task_id: str, req: BoostRequest | None = None):
             "verdict": score_result["verdict"],
             "has_pdf": False,
             "message": "No keywords selected — nothing to weave in.",
+            "warnings": [],
         }
 
     log.info(
@@ -563,7 +570,7 @@ def post_boost(task_id: str, req: BoostRequest | None = None):
         # Skills" does. An earlier version let the AI rewrite Technical
         # Skills too, and it would drop unrelated existing skills (AWS,
         # MLOps, etc.) while restructuring the table to fit the new ones in.
-        rewritten = rewrite(
+        rewritten, rewrite_warnings = rewrite(
             sections=resume_data["sections"],
             priority_keywords=selected,
             key_action_verbs=recruiter_result.get("key_action_verbs", []),
@@ -591,6 +598,7 @@ def post_boost(task_id: str, req: BoostRequest | None = None):
     new_score = score(recruiter_result, strip_latex(full_patched_tex))
     write_report(new_score, str(out_dir / "ats_report_boosted.txt"))
 
+    task["warnings"] = rewrite_warnings
     task["score_result"] = new_score
     task["score"] = new_score["overall_score"]
     task["verdict"] = new_score["verdict"]
@@ -628,6 +636,7 @@ def post_boost(task_id: str, req: BoostRequest | None = None):
         "score": new_score["overall_score"],
         "verdict": new_score["verdict"],
         "has_pdf": True,
+        "warnings": rewrite_warnings,
     }
 
 
@@ -666,6 +675,7 @@ def post_add_skills(task_id: str, req: AddSkillsRequest):
             "has_pdf": False,
             "added": [],
             "message": "No keywords selected — nothing added.",
+            "warnings": [],
         }
 
     # Build on top of whatever's already tailored for this task (see the
@@ -740,6 +750,7 @@ def post_add_skills(task_id: str, req: AddSkillsRequest):
         "verdict": new_score["verdict"],
         "has_pdf": True,
         "added": selected,
+        "warnings": [],
     }
 
 

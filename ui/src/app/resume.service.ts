@@ -20,6 +20,10 @@ export interface TaskStatus {
   verdict: string | null;
   error: string | null;
   has_pdf: boolean;
+  /** Sections the rewriter kept unchanged because weaving in the requested
+   * keywords honestly wasn't possible (e.g. a domain mismatch) — surfaced
+   * so this never happens silently. */
+  warnings: string[];
 }
 
 export interface ChatPlanResult {
@@ -63,6 +67,9 @@ export interface BoostResult {
 export interface AddSkillsResult extends BoostResult {
   added: string[];
 }
+  /** Sections kept unchanged because weaving in the requested keywords
+   * honestly wasn't possible (e.g. a domain mismatch). */
+  warnings: string[];
 
 export interface VerifierKeyword {
   keyword: string;

@@ -446,6 +446,12 @@ export class App implements OnInit, OnDestroy {
   saveHistoryAppliedDate = '';
   saveHistorySaving = false;
   saveHistoryError = '';
+  historyTopicsAdded: string[] = [];
+  /** null until a save completes; true/false reflects whether the
+   * Application Tracker link actually succeeded (see api.py's
+   * apply_later_linked — false only means the *link* failed, not that
+   * an existing row wasn't found). */
+  applyLaterLinked: boolean | null = null;
 
   // ── Self-intro / cover letter pitch state ────────────────────────
   pitchLoading = false;
@@ -556,8 +562,32 @@ export class App implements OnInit, OnDestroy {
   }
 
   // ── Pipeline ────────────────────────────────────────────────────
+  /** Guards against silently losing track of a completed-but-unsaved
+   * application: if the previous task finished and hasn't been saved to
+   * history yet, this shows a "Save it first, or Discard & Continue"
+   * confirm instead of starting a new run out from under it. */
+  showDiscardHistoryConfirm = false;
+
   generate() {
     if (!this.jd.trim() || this.isGenerating) return;
+    if (this.taskId && this.status?.status === 'done' && !this.historySaved) {
+      this.showDiscardHistoryConfirm = true;
+      this.cdr.detectChanges();
+      return;
+    }
+    this._doGenerate();
+  }
+
+  discardHistoryAndContinue() {
+    this.showDiscardHistoryConfirm = false;
+    this._doGenerate();
+  }
+
+  cancelDiscardHistory() {
+    this.showDiscardHistoryConfirm = false;
+  }
+
+  private _doGenerate() {
     this.isGenerating = true;
     this.status = null;
     this.pdfUrl = null;
@@ -569,6 +599,7 @@ export class App implements OnInit, OnDestroy {
     this.expandPreferred = false;
     this.expandVerifierBody = false;
     this.boostScore = null;
+    this.boostWarnings = [];
     this.boostPdfUrl = null;
     this.boostPdfRawUrl = null;
     this.selectedMissingKeywords.clear();
@@ -577,6 +608,8 @@ export class App implements OnInit, OnDestroy {
     this.historySaved = false;
     this.showSaveHistoryForm = false;
     this.saveHistoryError = '';
+    this.historyTopicsAdded = [];
+    this.applyLaterLinked = null;
     this.verifierResult = null;
     this.verifierError = '';
     this.explainResult = null;
@@ -650,16 +683,23 @@ export class App implements OnInit, OnDestroy {
     }
   }
 
+  private _sanitizeForFilename(s: string): string {
+    return s
+      .replace(/[^\w\- ]/g, '')
+      .trim()
+      .replace(/\s+/g, '_');
+  }
+
   private _suggestedFilename(): string {
     const roleDetail = this.status?.steps?.[1]?.detail ?? '';
     const roleMatch = roleDetail.match(/Role:\s*([^·]+)/);
     const role = roleMatch ? roleMatch[1].trim() : 'Resume_Tailored';
-    const safeRole = role
-      .replace(/[^\w\- ]/g, '')
-      .trim()
-      .replace(/\s+/g, '_');
+    const safeRole = this._sanitizeForFilename(role) || 'Resume_Tailored';
+    const safeName = this._sanitizeForFilename(this.authUser?.name ?? '');
     const date = new Date().toISOString().slice(0, 10);
-    return `${safeRole || 'Resume_Tailored'}_${date}`;
+    // Name + role + date is unique per role per day without the user having
+    // to rename the file themselves before saving it.
+    return safeName ? `${safeName}_${safeRole}_${date}` : `${safeRole}_${date}`;
   }
 
   // ── Resume history ──────────────────────────────────────────────
@@ -679,7 +719,6 @@ export class App implements OnInit, OnDestroy {
   }
 
   loadHistory() {
-    this.boostWarnings = [];
     this.historyLoading = true;
     this.svc.getHistory().subscribe({
       next: ({ entries }) => {
@@ -694,6 +733,11 @@ export class App implements OnInit, OnDestroy {
     });
   }
 
+  /** Shows the save form with blank fields — called automatically once a
+   * task finishes (see `_poll()`). There's no matching "cancel" back to a
+   * dismissible prompt: once a task is done, the only way past this
+   * without saving is to start a new generation, which prompts a real
+   * "Save it first, or Discard & Continue" confirm instead. */
   openSaveHistoryForm() {
     this.showSaveHistoryForm = true;
     this.saveHistoryCompany = '';
@@ -701,10 +745,6 @@ export class App implements OnInit, OnDestroy {
     this.saveHistoryAppliedDate = '';
     this.saveHistoryError = '';
     this.cdr.detectChanges();
-  }
-
-  cancelSaveHistoryForm() {
-    this.showSaveHistoryForm = false;
   }
 
   /** Fills the applied-date field with today's date, formatted for
@@ -734,11 +774,14 @@ export class App implements OnInit, OnDestroy {
         this.taskId,
         this.saveHistoryCompany.trim(),
         this.saveHistoryUrl.trim(),
+        this.jd,
         this.saveHistoryAppliedDate.trim(),
       )
       .subscribe({
-        next: ({ entry }) => {
+        next: ({ entry, topics_added, apply_later_linked }) => {
           this.historyEntries = [entry, ...this.historyEntries];
+          this.historyTopicsAdded = topics_added ?? [];
+          this.applyLaterLinked = apply_later_linked;
           this.saveHistorySaving = false;
           this.showSaveHistoryForm = false;
           this.historySaved = true;
@@ -1028,6 +1071,13 @@ export class App implements OnInit, OnDestroy {
         // reality — the rewrite may have touched more than just the
         // keywords that were selected.
         this._loadReport(taskId);
+        // Weave-in changes task["tex_path"]/["pdf_path"] on the backend, so
+        // a prior save no longer reflects the current content — re-arm the
+        // save gate (keeping the company/URL already typed) rather than
+        // let it silently go stale.
+        this.historySaved = false;
+        this.applyLaterLinked = null;
+        this.showSaveHistoryForm = true;
         this.isBoosting = false;
         this._clearBoostElapsedTimer();
         this.cdr.detectChanges();
@@ -1077,6 +1127,11 @@ export class App implements OnInit, OnDestroy {
         }
         this.selectedMissingKeywords.clear();
         this._loadReport(taskId);
+        // Same reasoning as Weave-in above — this also changes
+        // task["tex_path"]/["pdf_path"], so a prior save is now stale.
+        this.historySaved = false;
+        this.applyLaterLinked = null;
+        this.showSaveHistoryForm = true;
         this.isAddingSkills = false;
         this.cdr.detectChanges();
       },
@@ -1349,6 +1404,10 @@ export class App implements OnInit, OnDestroy {
             this.pdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.pdfRawUrl);
           }
           this._loadReport(taskId);
+          // Always show the save form once a task finishes — no longer a
+          // dismissible optional prompt — so an application is never lost
+          // from tracking just because the row went unnoticed.
+          this.openSaveHistoryForm();
           this._finish();
         } else if (s.status === 'error') {
           this._finish();

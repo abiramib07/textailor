@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CareerService, InterviewTopicEntry } from '../career.service';
 import { ResumesService } from '../../resumes/resumes.service';
+import { ResumeService, HistoryEntry } from '../../resume.service';
 
 @Component({
   selector: 'app-interview-prep',
@@ -13,6 +14,7 @@ import { ResumesService } from '../../resumes/resumes.service';
 })
 export class InterviewPrepComponent {
   private svc = inject(CareerService);
+  private resumeSvc = inject(ResumeService);
   private cdr = inject(ChangeDetectorRef);
   private resumesSvc = inject(ResumesService);
 
@@ -31,6 +33,16 @@ export class InterviewPrepComponent {
   seedingSkills = false;
   seedSkillsMessage = '';
 
+  /** Every saved resume snapshot for this identity — used to build the
+   * "Resumes used" panel per company and to widen the sidebar's company
+   * list beyond just `interview_topics` (a JD with zero extractable
+   * keywords produces a history row but no checklist row, so relying on
+   * `companies` alone would silently hide it). */
+  historyEntries: HistoryEntry[] = [];
+  expandedSnapshotId: string | null = null;
+  copiedSnapshotId: string | null = null;
+  private _copiedTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor() {
     effect(() => {
       this.resumesSvc.activeResumeId();
@@ -39,6 +51,7 @@ export class InterviewPrepComponent {
       this.selectedCompany = '';
       this.topics = [];
       this.loadCompanies();
+      this.loadHistory();
     });
   }
 
@@ -54,9 +67,56 @@ export class InterviewPrepComponent {
     });
   }
 
+  loadHistory() {
+    this.resumeSvc.getHistory().subscribe({
+      next: ({ entries }) => {
+        this.historyEntries = entries;
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  /** `companies` (from interview_topics) unioned with every company name
+   * that has a saved resume in history — `interview_topics` and
+   * `resume_history` live in separate SQLite files, so this union happens
+   * client-side rather than via a cross-database backend query. */
+  get allCompanies(): string[] {
+    const seen = new Map<string, string>();
+    for (const c of this.companies) seen.set(c.toLowerCase(), c);
+    for (const e of this.historyEntries) {
+      const key = e.company_name.toLowerCase();
+      if (!seen.has(key)) seen.set(key, e.company_name);
+    }
+    return [...seen.values()];
+  }
+
+  get resumesForSelectedCompany(): HistoryEntry[] {
+    if (!this.selectedCompany) return [];
+    const target = this.selectedCompany.toLowerCase();
+    return this.historyEntries.filter((e) => e.company_name.toLowerCase() === target);
+  }
+
+  toggleSnapshot(entry: HistoryEntry) {
+    this.expandedSnapshotId = this.expandedSnapshotId === entry.id ? null : entry.id;
+  }
+
+  copySnapshot(entry: HistoryEntry) {
+    if (!entry.resume_snapshot) return;
+    navigator.clipboard?.writeText(entry.resume_snapshot).then(() => {
+      this.copiedSnapshotId = entry.id;
+      this.cdr.detectChanges();
+      if (this._copiedTimer) clearTimeout(this._copiedTimer);
+      this._copiedTimer = setTimeout(() => {
+        this.copiedSnapshotId = null;
+        this.cdr.detectChanges();
+      }, 1300);
+    });
+  }
+
   selectCompany(company: string) {
     this.selectedCompany = company;
     this.seedSkillsMessage = '';
+    this.expandedSnapshotId = null;
     this.loadTopics();
   }
 

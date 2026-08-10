@@ -254,6 +254,26 @@
     </div>
   }
 
+  @if (showDiscardSaveConfirm) {
+    <div class="eg-modal-backdrop">
+      <div class="eg-modal">
+        <div class="eg-modal-title">Unsaved application</div>
+        <div class="eg-modal-row">
+          This draft hasn't been saved to your application history yet — save it first, or
+          discard it and continue.
+        </div>
+        <div class="eg-modal-actions">
+          <button type="button" class="eg-icon-btn" (click)="cancelDiscardSave()">
+            Go back &amp; save
+          </button>
+          <button type="button" class="eg-icon-btn eg-icon-btn--send" (click)="discardSaveAndContinue()">
+            Discard &amp; Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
   @if (showSendConfirm && draft) {
     <div class="eg-modal-backdrop">
       <div class="eg-modal">

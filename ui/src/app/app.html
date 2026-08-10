@@ -180,6 +180,22 @@
             <span class="spinner-label"> <span class="spinner"></span> Generating… </span>
           }
         </button>
+        @if (showDiscardHistoryConfirm) {
+          <div class="history-save-form">
+            <p class="history-save-hint">
+              The resume above hasn't been saved to your application history yet — save it
+              first, or discard it and start this new one.
+            </p>
+            <div class="history-save-actions">
+              <button class="btn-secondary action-btn" (click)="cancelDiscardHistory()">
+                Go back &amp; save
+              </button>
+              <button class="btn-primary action-btn" (click)="discardHistoryAndContinue()">
+                Discard &amp; Continue
+              </button>
+            </div>
+          </div>
+        }
         <!-- ── Pipeline stepper ── -->
         @if (isGenerating || status) {
           <div class="stepper">
@@ -274,6 +290,9 @@
             }
           </div>
         }
+        <!-- ── Save to history — always shown once a task finishes, not a
+             dismissible optional prompt, so an application is never lost
+             from tracking (see docs/design-plans/2026-08-09-mandatory-application-tracking.md) ── -->
         @if (showSaveHistoryForm) {
           <div class="history-save-form">
             @if (saveHistoryError) {
@@ -283,6 +302,11 @@
               <label for="history-company">Company name *</label>
               <input id="history-company" type="text" [(ngModel)]="saveHistoryCompany" placeholder="e.g. Acme Corp" />
             </div>
+            <p class="history-save-hint">
+              The job description you pasted, and this JD's keywords, are saved along with the
+              resume — keywords also get added to {{ saveHistoryCompany.trim() || 'this company' }}'s
+              interview-prep checklist.
+            </p>
             <div class="auth-field">
               <label for="history-url">Job post / LinkedIn URL (optional)</label>
               <input
@@ -311,9 +335,6 @@
               </div>
             </div>
             <div class="history-save-actions">
-              <button class="btn-secondary action-btn" (click)="cancelSaveHistoryForm()">
-                Cancel
-              </button>
               <button
                 class="btn-primary action-btn"
                 [disabled]="!saveHistoryCompany.trim() || saveHistorySaving"
@@ -325,8 +346,27 @@
           </div>
         }
         @if (historySaved) {
-          <div class="history-save-row">
-            <span>✓ Saved to history</span>
+          <div class="history-save-banner">
+            <b>Saved.</b> Resume, company, and job description added to your history.
+            @if (applyLaterLinked === true) {
+              <div>✓ Added to your Application Tracker.</div>
+            }
+            @if (applyLaterLinked === false) {
+              <div class="auth-error">
+                Could not update the Application Tracker — check it manually for this company.
+              </div>
+            }
+            @if (historyTopicsAdded.length) {
+              <div>
+                {{ historyTopicsAdded.length }} topic{{ historyTopicsAdded.length === 1 ? '' : 's' }}
+                added to the interview checklist.
+              </div>
+              <div class="history-chip-row">
+                @for (topic of historyTopicsAdded; track topic) {
+                  <span class="history-chip">{{ topic }}</span>
+                }
+              </div>
+            }
           </div>
         }
         <!-- ── Self-intro / cover letter pitch material ── -->

@@ -19,11 +19,13 @@ CREATE TABLE IF NOT EXISTS resume_history (
     company_name  TEXT NOT NULL,
     job_title     TEXT,
     job_url       TEXT,
+    jd_text       TEXT,
     pdf_path      TEXT NOT NULL,
     ats_score     REAL,
     verdict       TEXT,
     applied_date  TEXT,
-    created_at    REAL NOT NULL
+    created_at    REAL NOT NULL,
+    resume_snapshot TEXT
 );
 """
 
@@ -44,10 +46,19 @@ def _conn() -> sqlite3.Connection:
 
 
 def _migrate(conn: sqlite3.Connection, default_resume_id: str) -> None:
-    """Backfill `resume_id` on rows saved before multi-resume support existed."""
+    """Backfill `resume_id` on rows saved before multi-resume support existed,
+    add `jd_text` for rows saved before the Generator tab's Save action
+    started persisting the job description alongside the entry, and add
+    `resume_snapshot` for rows saved before entries started capturing the
+    tailored resume's plain text (old rows keep it NULL — the original
+    tex isn't recoverable after the fact)."""
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(resume_history)")}
     if "resume_id" not in cols:
         conn.execute("ALTER TABLE resume_history ADD COLUMN resume_id TEXT")
+    if "jd_text" not in cols:
+        conn.execute("ALTER TABLE resume_history ADD COLUMN jd_text TEXT")
+    if "resume_snapshot" not in cols:
+        conn.execute("ALTER TABLE resume_history ADD COLUMN resume_snapshot TEXT")
     conn.execute(
         "UPDATE resume_history SET resume_id = ? WHERE resume_id IS NULL", (default_resume_id,)
     )
@@ -71,29 +82,33 @@ def save_entry(
     company_name: str,
     job_title: str,
     job_url: str,
+    jd_text: str,
     pdf_path: str,
     ats_score: float,
     verdict: str,
     applied_date: str,
+    resume_snapshot: str | None = None,
 ) -> dict:
     """Insert a history entry and return it as saved."""
     entry_id = str(uuid.uuid4())
     conn = _conn()
     conn.execute(
         "INSERT INTO resume_history (id, resume_id, company_name, job_title, job_url, "
-        "pdf_path, ats_score, verdict, applied_date, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "jd_text, pdf_path, ats_score, verdict, applied_date, created_at, resume_snapshot) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             entry_id,
             resume_id,
             company_name,
             job_title,
             job_url,
+            jd_text,
             pdf_path,
             ats_score,
             verdict,
             applied_date,
             time.time(),
+            resume_snapshot,
         ),
     )
     conn.commit()

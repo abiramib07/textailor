@@ -105,11 +105,15 @@ export interface HistoryEntry {
   company_name: string;
   job_title: string | null;
   job_url: string | null;
+  jd_text: string | null;
   pdf_path: string;
   ats_score: number | null;
   verdict: string | null;
   applied_date: string | null;
   created_at: number;
+  /** Plain-text snapshot of the tailored resume at save time — null for
+   * entries saved before this field existed, or if capture failed. */
+  resume_snapshot: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -241,12 +245,18 @@ export class ResumeService {
     taskId: string,
     companyName: string,
     jobUrl: string,
+    jd: string,
     appliedDate: string,
-  ): Observable<{ entry: HistoryEntry }> {
-    return this.http.post<{ entry: HistoryEntry }>(`${API}/api/history`, {
+  ): Observable<{ entry: HistoryEntry; topics_added: string[]; apply_later_linked: boolean }> {
+    return this.http.post<{
+      entry: HistoryEntry;
+      topics_added: string[];
+      apply_later_linked: boolean;
+    }>(`${API}/api/history`, {
       task_id: taskId,
       company_name: companyName,
       job_url: jobUrl,
+      jd,
       applied_date: appliedDate,
     });
   }

@@ -89,6 +89,29 @@ def save_email_context(
     }
 
 
+def link_apply_later(
+    resume_id: str, company_name: str, role_title: str, source_url: str
+) -> tuple[str | None, bool]:
+    """Create or update this company's Apply Later row (status → Applied).
+
+    Public entry point for callers outside this module that need the same
+    linking behavior `save_email_context` already gives the Email
+    Generator's save path — e.g. the Generator tab's Save to History,
+    which used to leave the Application Tracker untouched entirely.
+    Returns (apply_later_id, created) — id is None if no company name was
+    given to match or create against.
+    """
+    with tx() as conn:
+        return _link_apply_later(
+            conn,
+            resume_id,
+            company_name.strip(),
+            role_title.strip(),
+            source_url.strip(),
+            time.time(),
+        )
+
+
 def _link_apply_later(
     conn: sqlite3.Connection,
     resume_id: str,

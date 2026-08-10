@@ -3,7 +3,7 @@
     <!-- Company sidebar -->
     <div class="ip-companies">
       <div class="ip-companies-title">Companies</div>
-      @for (c of companies; track c) {
+      @for (c of allCompanies; track c) {
         <button
           type="button"
           class="ip-company-btn"
@@ -35,6 +35,46 @@
           <h2 class="ip-title">{{ selectedCompany }}</h2>
           <span class="ip-progress">{{ coveredCount }} / {{ topics.length }} covered</span>
         </div>
+
+        @if (resumesForSelectedCompany.length) {
+          <div class="ip-resumes-used">
+            <div class="ip-resumes-used-title">
+              Resumes used ({{ resumesForSelectedCompany.length }})
+            </div>
+            @for (entry of resumesForSelectedCompany; track entry.id) {
+              <div class="ip-resume-entry">
+                <button
+                  type="button"
+                  class="ip-resume-entry-toggle"
+                  (click)="toggleSnapshot(entry)"
+                >
+                  <span class="toggle-chevron" [class.toggle-chevron--open]="expandedSnapshotId === entry.id">▸</span>
+                  {{ entry.job_title || 'Untitled role' }}
+                  @if (entry.ats_score !== null) {
+                    <span class="ip-resume-score">{{ entry.ats_score }}%</span>
+                  }
+                </button>
+                @if (expandedSnapshotId === entry.id) {
+                  @if (entry.resume_snapshot) {
+                    <div class="ip-resume-snapshot">
+                      <button
+                        type="button"
+                        class="ip-resume-copy-btn"
+                        [class.ip-resume-copy-btn--copied]="copiedSnapshotId === entry.id"
+                        (click)="copySnapshot(entry)"
+                      >
+                        {{ copiedSnapshotId === entry.id ? '✓ Copied' : 'Copy' }}
+                      </button>
+                      <pre>{{ entry.resume_snapshot }}</pre>
+                    </div>
+                  } @else {
+                    <p class="ip-hint">No saved content for this entry.</p>
+                  }
+                }
+              </div>
+            }
+          </div>
+        }
 
         <div class="ip-seed-row">
           <button

@@ -74,6 +74,14 @@ export class EmailGeneratorComponent implements OnDestroy {
   sendResult: { to: string } | null = null;
   showSendConfirm = false;
 
+  /** Guards against silently losing track of an application: if the
+   * current draft hasn't been saved yet, starting a new one (via
+   * `generate()` or `newEmail()`) shows a "Save it first, or Discard &
+   * Continue" confirm instead of clearing it out from under the user.
+   * `_pendingAction` remembers which call to resume on confirm. */
+  showDiscardSaveConfirm = false;
+  private _pendingAction: (() => void) | null = null;
+
   @Output() tailorResume = new EventEmitter<string>();
 
   @ViewChild('chatScroll') chatScrollEl!: ElementRef;
@@ -92,6 +100,28 @@ export class EmailGeneratorComponent implements OnDestroy {
 
   generate() {
     if (!this.canGenerate) return;
+    if (this.draft && !this.saveResult) {
+      this._pendingAction = () => this._doGenerate();
+      this.showDiscardSaveConfirm = true;
+      this.cdr.detectChanges();
+      return;
+    }
+    this._doGenerate();
+  }
+
+  discardSaveAndContinue() {
+    this.showDiscardSaveConfirm = false;
+    const action = this._pendingAction;
+    this._pendingAction = null;
+    action?.();
+  }
+
+  cancelDiscardSave() {
+    this.showDiscardSaveConfirm = false;
+    this._pendingAction = null;
+  }
+
+  private _doGenerate() {
     this.isGenerating = true;
     this.generateError = '';
     this.draft = null;
@@ -141,6 +171,8 @@ export class EmailGeneratorComponent implements OnDestroy {
         };
         this.canUndo = true;
         this.isEditing = false;
+        // The draft body changed — a prior save no longer reflects it.
+        this.saveResult = null;
         this._pushMsg({ role: 'assistant', text: result.done_summary });
         this.chatBusy = false;
         this.cdr.detectChanges();
@@ -163,6 +195,8 @@ export class EmailGeneratorComponent implements OnDestroy {
       next: (draft) => {
         this.draft = draft;
         this.canUndo = false;
+        // Same reasoning as sendChat above — the draft body just changed.
+        this.saveResult = null;
         this._pushMsg({ role: 'assistant', text: '↺ Reverted to the previous version.' });
         this.chatBusy = false;
         this.cdr.detectChanges();
@@ -284,6 +318,16 @@ export class EmailGeneratorComponent implements OnDestroy {
   }
 
   newEmail() {
+    if (this.draft && !this.saveResult) {
+      this._pendingAction = () => this._doNewEmail();
+      this.showDiscardSaveConfirm = true;
+      this.cdr.detectChanges();
+      return;
+    }
+    this._doNewEmail();
+  }
+
+  private _doNewEmail() {
     this.jobPost = '';
     this.sourceUrl = '';
     this.instruction = 'Write a professional email to apply for this role, referencing my resume.';
@@ -331,6 +375,8 @@ export class EmailGeneratorComponent implements OnDestroy {
         this.draft = draft;
         this.canUndo = true;
         this.isEditing = false;
+        // Manual edit — the draft body changed, same as sendChat/undo above.
+        this.saveResult = null;
         this.isSavingEdit = false;
         this.cdr.detectChanges();
       },

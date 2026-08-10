@@ -35,7 +35,7 @@ from agents.verifier import explain_keyword, verify
 from auth.db import init_db as init_auth_db
 from auth.router import router as auth_router
 from career.db import init_db as init_career_db
-from career.email_link import save_email_context
+from career.email_link import add_checklist_topics, link_apply_later, save_email_context
 from career.router import router as career_router
 from career.topic_mapping import log_keywords as log_jd_keywords
 from compiler import compile_tex
@@ -1028,6 +1028,7 @@ class HistorySaveRequest(BaseModel):
     task_id: str
     company_name: str
     job_url: str = ""
+    jd: str = ""
     applied_date: str = ""
 
 
@@ -1035,23 +1036,71 @@ class HistorySaveRequest(BaseModel):
 def save_history(req: HistorySaveRequest) -> dict:
     """Save a completed task's resume to history — company name + source URL
     are the only things the user has to supply; everything else (job title,
-    score, verdict, PDF, resume identity) is pulled from the already-completed task."""
+    score, verdict, PDF, resume identity) is pulled from the already-completed
+    task. Also adds this task's JD keywords (required + preferred) to the
+    company's interview-prep checklist — the same `add_checklist_topics` used
+    by Save Email Context — reusing `recruiter_result` already sitting on the
+    task instead of re-running `analyze()`. And links/updates this company's
+    Application Tracker row, the same way Save Email Context already does —
+    closing the gap where saving from the Generator tab never touched the
+    tracker at all."""
     task = _tasks.get(req.task_id)
     if not task or task.get("status") != "done" or not task.get("pdf_path"):
         raise HTTPException(status_code=400, detail="Task not complete or not found")
 
-    resume_id, _ = _resolve_resume(task.get("resume_id"))
+    resume_id, base_path = _resolve_resume(task.get("resume_id"))
+    company_name = req.company_name.strip()
+    job_title = task.get("recruiter_result", {}).get("job_title", "")
+
+    # Plain-text snapshot of this task's own tailored output (pipeline +
+    # any Weave-in/Add-to-Skills passes, which update task["tex_path"]) —
+    # parse_resume()["plain_text"], never a raw strip_latex() over the
+    # whole file, same reasoning as /api/compare and /api/pitch. Best
+    # effort: a missing/unreadable file must not block the history save
+    # itself, same non-fatal philosophy as the checklist update below.
+    resume_snapshot: str | None = None
+    try:
+        tailored_path = task.get("tex_path") or base_path
+        resume_snapshot = parse_resume(tailored_path)["plain_text"]
+    except Exception:
+        log.exception("Resume snapshot capture failed (non-fatal)  task_id=%s", req.task_id)
+
     entry = history_save(
         resume_id=resume_id,
-        company_name=req.company_name.strip(),
-        job_title=task.get("recruiter_result", {}).get("job_title", ""),
+        company_name=company_name,
+        job_title=job_title,
         job_url=req.job_url.strip(),
+        jd_text=req.jd.strip(),
         pdf_path=task["pdf_path"],
         ats_score=task.get("score"),
         verdict=task.get("verdict"),
         applied_date=req.applied_date.strip(),
+        resume_snapshot=resume_snapshot,
     )
-    return {"entry": entry}
+
+    topics_added: list[str] = []
+    try:
+        recruiter_result = task.get("recruiter_result") or {}
+        keywords = recruiter_result.get("required_keywords", []) + recruiter_result.get(
+            "preferred_keywords", []
+        )
+        if keywords:
+            topics_added = add_checklist_topics(resume_id, company_name, keywords)
+    except Exception:
+        log.exception("Interview-prep checklist update failed (non-fatal)  task_id=%s", req.task_id)
+
+    # apply_later_linked is True whether the row was created or updated —
+    # both are success. False only if linking itself raised, so the
+    # frontend can show a real warning instead of silently claiming this
+    # application is tracked when it isn't.
+    apply_later_linked = False
+    try:
+        link_apply_later(resume_id, company_name, job_title, req.job_url.strip())
+        apply_later_linked = True
+    except Exception:
+        log.exception("Apply Later link failed (non-fatal)  task_id=%s", req.task_id)
+
+    return {"entry": entry, "topics_added": topics_added, "apply_later_linked": apply_later_linked}
 
 
 @app.get("/api/history")

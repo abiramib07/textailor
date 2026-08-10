@@ -93,6 +93,13 @@ export interface ExplainResult {
   evidence: string;
 }
 
+export interface PitchResult {
+  short_pitch: string;
+  written_bio: string;
+  project_pitches: string;
+  cover_letter_template: string;
+}
+
 export interface HistoryEntry {
   id: string;
   company_name: string;
@@ -260,5 +267,13 @@ export class ResumeService {
 
   explainKeyword(taskId: string, keyword: string): Observable<ExplainResult> {
     return this.http.post<ExplainResult>(`${API}/api/verify/${taskId}/explain`, { keyword });
+  }
+
+  /** Draft a short pitch / written bio / project talking points / cover
+   * letter template from this task's JD and its current tailored resume.
+   * Preview only — nothing is saved until the caller writes each field via
+   * CareerService.setPersonalInfo. */
+  generatePitches(taskId: string, jd: string): Observable<PitchResult> {
+    return this.http.post<PitchResult>(`${API}/api/pitch/${taskId}`, { jd });
   }
 }

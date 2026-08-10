@@ -12,6 +12,9 @@ const SUGGESTED_FIELDS: { key: string; label: string; multiline?: boolean }[] = 
   { key: 'email', label: 'Email' },
   { key: 'phone', label: 'Phone' },
   { key: 'short_pitch', label: 'Short pitch / elevator summary', multiline: true },
+  { key: 'written_bio', label: 'Written bio (LinkedIn About / cold outreach)', multiline: true },
+  { key: 'project_pitches', label: 'Project talking points (STAR pitches)', multiline: true },
+  { key: 'cover_letter_template', label: 'Cover letter template', multiline: true },
 ];
 
 @Component({

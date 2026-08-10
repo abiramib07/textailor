@@ -27,6 +27,7 @@ from agents.chat_editor import plan as chat_plan
 from agents.chat_editor import undo as chat_undo
 from agents.email_generator import generate_email, revise_email
 from agents.email_sender import send_email
+from agents.pitch_generator import generate_pitches
 from agents.recruiter import analyze
 from agents.resume_importer import extract_text
 from agents.rewriter import rewrite
@@ -810,6 +811,42 @@ def get_compare(task_id: str) -> dict:
         "original": original_text,
         "tailored": tailored_text,
     }
+
+
+class PitchRequest(BaseModel):
+    """Body for POST /api/pitch/{task_id}."""
+
+    jd: str
+
+
+@app.post("/api/pitch/{task_id}")
+def post_pitch(task_id: str, req: PitchRequest) -> dict:
+    """Draft a fresh short pitch / written bio / project talking points /
+    cover letter template from this task's job description and its current
+    tailored resume. Preview only — nothing is persisted here; the frontend
+    saves each field via PUT /api/career/personal-info once the user
+    approves, so a regenerate never silently overwrites a hand-edited value."""
+    if not req.jd.strip():
+        raise HTTPException(status_code=400, detail="Missing job description")
+
+    task = _tasks.get(task_id)
+    if not task or task.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Task not complete or not found")
+
+    _, base_path = _resolve_resume(task.get("resume_id"))
+    tailored_path = task.get("tex_path") or base_path
+    try:
+        resume_text = parse_resume(tailored_path)["plain_text"]
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"Resume file missing on disk: {exc}") from exc
+
+    try:
+        result = generate_pitches(req.jd, resume_text)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Pitch generation failed: {exc}") from exc
+
+    log.info("Pitch generated  task_id=%s", task_id)
+    return result
 
 
 # ── ATS Score Verifier — independent resume+JD rescan ───────────────────────────

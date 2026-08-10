@@ -21,8 +21,10 @@ import {
   VerifierResult,
   VerifierKeyword,
   ExplainResult,
+  PitchResult,
 } from './resume.service';
 import { AuthService, UserProfile } from './auth/auth.service';
+import { CareerService } from './career/career.service';
 import { EmailGeneratorComponent } from './email-generator/email-generator';
 import { ResumeImportComponent } from './resume-import/resume-import';
 import { PersonalInfoComponent } from './career/personal-info/personal-info';
@@ -102,6 +104,7 @@ export class App implements OnInit, OnDestroy {
   private authSvc = inject(AuthService);
   private router = inject(Router);
   private resumesSvc = inject(ResumesService);
+  private careerSvc = inject(CareerService);
 
   // ── Auth (session, if any) ──────────────────────────────────────
   authUser: UserProfile | null = null;
@@ -440,6 +443,13 @@ export class App implements OnInit, OnDestroy {
   saveHistorySaving = false;
   saveHistoryError = '';
 
+  // ── Self-intro / cover letter pitch state ────────────────────────
+  pitchLoading = false;
+  pitchError = '';
+  pitchPreview: PitchResult | null = null;
+  pitchSaving = false;
+  pitchSaved = false;
+
   // ── Chat state ──────────────────────────────────────────────────
   chatMessages: ChatMessage[] = [];
   chatInput = '';
@@ -567,6 +577,9 @@ export class App implements OnInit, OnDestroy {
     this.verifierError = '';
     this.explainResult = null;
     this.explainQuery = '';
+    this.pitchPreview = null;
+    this.pitchError = '';
+    this.pitchSaved = false;
     this._startElapsedTimer();
     this.cdr.detectChanges();
 
@@ -733,6 +746,64 @@ export class App implements OnInit, OnDestroy {
           this.cdr.detectChanges();
         },
       });
+  }
+
+  regeneratePitches() {
+    if (!this.taskId || this.pitchLoading) return;
+    this.pitchLoading = true;
+    this.pitchError = '';
+    this.pitchSaved = false;
+
+    this.svc.generatePitches(this.taskId, this.jd).subscribe({
+      next: (result) => {
+        this.pitchPreview = result;
+        this.pitchLoading = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.pitchLoading = false;
+        this.pitchError = err?.error?.detail ?? 'Could not generate pitch material.';
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
+  savePitches() {
+    if (!this.pitchPreview || this.pitchSaving) return;
+    this.pitchSaving = true;
+    const preview = this.pitchPreview;
+    const fields: (keyof PitchResult)[] = [
+      'short_pitch',
+      'written_bio',
+      'project_pitches',
+      'cover_letter_template',
+    ];
+
+    let remaining = fields.length;
+    const onFieldDone = () => {
+      remaining -= 1;
+      if (remaining === 0) {
+        this.pitchSaving = false;
+        this.pitchSaved = true;
+        this.pitchPreview = null;
+        this.cdr.detectChanges();
+      }
+    };
+    for (const key of fields) {
+      this.careerSvc.setPersonalInfo(key, preview[key]).subscribe({
+        next: onFieldDone,
+        error: () => {
+          this.pitchSaving = false;
+          this.pitchError = 'Could not save one or more fields — check Personal Info and retry.';
+          this.cdr.detectChanges();
+        },
+      });
+    }
+  }
+
+  discardPitches() {
+    this.pitchPreview = null;
+    this.pitchError = '';
   }
 
   viewHistoryPdf(entry: HistoryEntry) {

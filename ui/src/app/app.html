@@ -329,6 +329,54 @@
             <span>✓ Saved to history</span>
           </div>
         }
+        <!-- ── Self-intro / cover letter pitch material ── -->
+        @if (status?.status === 'done' && !pitchPreview) {
+          <div class="history-save-row">
+            <span>Refresh your self-intro &amp; cover letter for this resume?</span>
+            <button class="btn-ghost" [disabled]="pitchLoading" (click)="regeneratePitches()">
+              {{ pitchLoading ? 'Generating…' : 'Regenerate Pitch Material' }}
+            </button>
+          </div>
+        }
+        @if (pitchError) {
+          <div class="auth-error">{{ pitchError }}</div>
+        }
+        @if (pitchSaved) {
+          <div class="history-save-banner">
+            <b>Saved.</b> Short pitch, written bio, project talking points, and cover letter
+            template updated in Personal Info.
+          </div>
+        }
+        @if (pitchPreview) {
+          <div class="history-save-form">
+            <div class="auth-field">
+              <label for="pitch-short">Short pitch</label>
+              <textarea id="pitch-short" rows="4" [(ngModel)]="pitchPreview.short_pitch"></textarea>
+            </div>
+            <div class="auth-field">
+              <label for="pitch-bio">Written bio</label>
+              <textarea id="pitch-bio" rows="6" [(ngModel)]="pitchPreview.written_bio"></textarea>
+            </div>
+            <div class="auth-field">
+              <label for="pitch-projects">Project talking points</label>
+              <textarea id="pitch-projects" rows="8" [(ngModel)]="pitchPreview.project_pitches"></textarea>
+            </div>
+            <div class="auth-field">
+              <label for="pitch-cover">Cover letter template</label>
+              <textarea
+                id="pitch-cover"
+                rows="8"
+                [(ngModel)]="pitchPreview.cover_letter_template"
+              ></textarea>
+            </div>
+            <div class="history-save-actions">
+              <button class="btn-secondary action-btn" (click)="discardPitches()">Discard</button>
+              <button class="btn-primary action-btn" [disabled]="pitchSaving" (click)="savePitches()">
+                {{ pitchSaving ? 'Saving…' : 'Save to Personal Info' }}
+              </button>
+            </div>
+          </div>
+        }
         <!-- ── ATS Report panel ── -->
         @if (showReport && reportData) {
           <div class="report-panel">

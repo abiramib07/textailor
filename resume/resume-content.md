@@ -3,7 +3,7 @@
 
 ## Professional Summary
 
-Generative AI Developer with 2+ years architecting and deploying production multi-agent LLM orchestration systems for enterprise brokerage clients (UBS, Morgan Stanley, Jio, Fyers, JPMorgan). Specializes in RAG pipelines, agentic workflow automation, and groundedness/hallucination-prevention controls, built with Python, FastAPI, LangChain/LangGraph, and vector databases across 8+ live production environments.
+Generative AI Developer with 2.5+ years building production multi-agent LLM systems for enterprise brokerage clients (UBS, Morgan Stanley, Jio, Fyers, JPMorgan). Deep expertise in RAG pipelines, agentic orchestration, and hallucination-prevention controls — deployed across 8+ live production environments using Python, FastAPI, LangChain/LangGraph, and vector databases.
 
 ## Technical Skills
 
@@ -75,12 +75,6 @@ Product: GrowflexAI
 - Developed a LangGraph multi-agent system for automatic chart generation from natural language, supporting 10+ chart types and improving user adoption by 60%.
 
 **Tech:** LangGraph, OpenAI API, Plotly, Python, Multi-agent Systems
-
-#### Predictive Analytics & Cross-Dataset Insights
-
-- Integrated Facebook Prophet forecasting (88% accuracy) and an asynchronous correlation-analysis pipeline processing 10M+ records across multiple data sources to support business planning and stakeholder insights.
-
-**Tech:** Facebook Prophet, Pandas, NumPy, FastAPI, Python, Asyncio
 
 #### Domain-Specific Chatbot (ROOS — Cloud Kitchen Assistant)
 

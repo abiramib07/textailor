@@ -1,0 +1,49 @@
+@if (open) {
+  <!-- Mouse-only convenience dismiss; keyboard users close via the ✕ button. -->
+  <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+  <div class="cmp-overlay" (click)="close()">
+    <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+    <div class="cmp-card" (click)="$event.stopPropagation()">
+      <div class="cmp-header">
+        <h3 class="cmp-title">Compare with original</h3>
+        <button type="button" class="cmp-close" (click)="close()" aria-label="Close comparison">✕</button>
+      </div>
+
+      @if (loading) {
+        <div class="cmp-status">Loading comparison…</div>
+      }
+      @if (error) {
+        <div class="cmp-status cmp-status--error">⚠ {{ error }}</div>
+      }
+
+      @if (!loading && !error && diffParts.length > 0) {
+        <div class="cmp-legend">
+          <span class="cmp-legend-item"><span class="cmp-swatch cmp-swatch--removed"></span> Removed</span>
+          <span class="cmp-legend-item"><span class="cmp-swatch cmp-swatch--added"></span> Added</span>
+        </div>
+        <div class="cmp-panes">
+          <div class="cmp-pane">
+            <div class="cmp-pane-title">Original (base resume)</div>
+            <div class="cmp-pane-body">
+              @for (part of diffParts; track $index) {
+                @if (!part.added) {
+                  <span [class.cmp-removed]="part.removed">{{ part.value }}</span>
+                }
+              }
+            </div>
+          </div>
+          <div class="cmp-pane">
+            <div class="cmp-pane-title">Tailored (current)</div>
+            <div class="cmp-pane-body">
+              @for (part of diffParts; track $index) {
+                @if (!part.removed) {
+                  <span [class.cmp-added]="part.added">{{ part.value }}</span>
+                }
+              }
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+}

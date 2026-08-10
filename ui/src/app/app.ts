@@ -31,6 +31,7 @@ import { PostArchiveComponent } from './career/post-archive/post-archive';
 import { InterviewPrepComponent } from './career/interview-prep/interview-prep';
 import { TopicMappingComponent } from './career/topic-mapping/topic-mapping';
 import { ResumesService, ResumeIdentity } from './resumes/resumes.service';
+import { ResumeCompareComponent } from './resume-compare/resume-compare';
 
 const STEP_NAMES = [
   'Parse resume',
@@ -89,6 +90,7 @@ type EditorState =
     PostArchiveComponent,
     InterviewPrepComponent,
     TopicMappingComponent,
+    ResumeCompareComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
@@ -350,6 +352,61 @@ export class App implements OnInit, OnDestroy {
 
   // ── Add-to-skills state (fast, non-AI alternative to Boost) ──────
   isAddingSkills = false;
+
+  // ── Resume comparison (base vs. tailored) ─────────────────────────
+  showCompare = false;
+
+  openCompare() {
+    this.showCompare = true;
+    this.cdr.detectChanges();
+  }
+
+  onCompareClosed() {
+    this.showCompare = false;
+    this.cdr.detectChanges();
+  }
+
+  // ── ATS Score Verifier (independent resume+JD rescan) ─────────────
+  showAtsVerify = false;
+  atsVerifyJd = '';
+  atsVerifyFile: File | null = null;
+  atsVerifyLoading = false;
+  atsVerifyError = '';
+  atsVerifyResult: ScoreReport | null = null;
+
+  toggleAtsVerify() {
+    this.showAtsVerify = !this.showAtsVerify;
+    if (this.showAtsVerify && !this.atsVerifyJd) {
+      this.atsVerifyJd = this.jd;
+    }
+    this.cdr.detectChanges();
+  }
+
+  onAtsVerifyFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.atsVerifyFile = input.files?.[0] ?? null;
+  }
+
+  runAtsVerify() {
+    if (!this.taskId || this.atsVerifyLoading || !this.atsVerifyJd.trim()) return;
+    this.atsVerifyLoading = true;
+    this.atsVerifyError = '';
+    this.atsVerifyResult = null;
+    this.cdr.detectChanges();
+
+    this.svc.atsCheck(this.atsVerifyJd, this.taskId, this.atsVerifyFile ?? undefined).subscribe({
+      next: (result) => {
+        this.atsVerifyResult = result;
+        this.atsVerifyLoading = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.atsVerifyError = err?.error?.detail ?? 'Could not verify the score — please try again.';
+        this.atsVerifyLoading = false;
+        this.cdr.detectChanges();
+      },
+    });
+  }
 
   // ── Rescore state (after a chat edit) ────────────────────────────
   isRescoring = false;

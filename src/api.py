@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
@@ -28,6 +28,7 @@ from agents.chat_editor import undo as chat_undo
 from agents.email_generator import generate_email, revise_email
 from agents.email_sender import send_email
 from agents.recruiter import analyze
+from agents.resume_importer import extract_text
 from agents.rewriter import rewrite
 from agents.verifier import explain_keyword, verify
 from auth.db import init_db as init_auth_db
@@ -778,6 +779,104 @@ def post_rescore(task_id: str):
     log.info("Rescore complete  task_id=%s  score=%s%%", task_id, new_score["overall_score"])
 
     return new_score
+
+
+@app.get("/api/compare/{task_id}")
+def get_compare(task_id: str) -> dict:
+    """Return plain-text versions of this task's pristine base resume and its
+    current tailored output, for a side-by-side diff — "before" is the
+    resume identity's untouched `.tex`, "after" is whatever this task's
+    latest Weave-in/Add-to-Skills pass left in `task["tex_path"]` (falling
+    back to the base resume if the task hasn't tailored anything yet)."""
+    task = _tasks.get(task_id)
+    if not task or task.get("status") != "done":
+        raise HTTPException(status_code=400, detail="Task not complete or not found")
+
+    _, base_path = _resolve_resume(task.get("resume_id"))
+    tailored_path = task.get("tex_path") or base_path
+
+    # `parse_resume()["plain_text"]` (not a raw read + strip_latex on the
+    # whole file) — the raw file also contains the preamble (documentclass
+    # options, package configs, \newcommand macro definitions), which is
+    # LaTeX noise a diff reader has no use for. parse_resume() already
+    # isolates just the document's sections before stripping.
+    try:
+        original_text = parse_resume(base_path)["plain_text"]
+        tailored_text = parse_resume(tailored_path)["plain_text"]
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"Resume file missing on disk: {exc}") from exc
+
+    return {
+        "original": original_text,
+        "tailored": tailored_text,
+    }
+
+
+# ── ATS Score Verifier — independent resume+JD rescan ───────────────────────────
+
+
+@app.post("/api/ats-check")
+async def post_ats_check(
+    jd: str = Form(...),
+    task_id: str | None = Form(None),
+    file: UploadFile | None = File(None),
+) -> dict:
+    """Independently verify an ATS score: re-run recruiter keyword analysis
+    AND scoring from scratch against fresh resume text — either a freshly
+    uploaded file, or (if none is attached) the given task's current tex,
+    still read fresh off disk and re-analyzed rather than reusing the
+    task's cached `recruiter_result`. This catches drift in the keyword
+    extraction itself, not just re-scoring against a stale list. Fully
+    decoupled from pipeline state — nothing is persisted."""
+    if not jd.strip():
+        raise HTTPException(status_code=400, detail="Paste the job description first")
+
+    if file is not None and file.filename:
+        filename = file.filename
+        ext = Path(filename).suffix.lower()
+        data = await file.read()
+        if not data:
+            raise HTTPException(status_code=400, detail="The uploaded file is empty")
+        if ext == ".tex":
+            resume_text = strip_latex(data.decode("utf-8"))
+        else:
+            try:
+                raw_text = extract_text(data, filename)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if not raw_text.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="No readable text found in this file — if it's a scanned PDF, try a text-based export.",
+                )
+            resume_text = raw_text
+    elif task_id:
+        task = _tasks.get(task_id)
+        if not task or task.get("status") != "done":
+            raise HTTPException(status_code=400, detail="Task not complete or not found")
+        _, base_path = _resolve_resume(task.get("resume_id"))
+        tex_path = task.get("tex_path") or base_path
+        # parse_resume()["plain_text"], not a raw read + strip_latex on the
+        # whole file — same fix as /api/compare, for the same reason: the
+        # raw file's preamble (documentclass/package options, \newcommand
+        # macro definitions) is LaTeX noise the recruiter agent has no use
+        # for and would otherwise inflate the analyzed prompt for nothing.
+        resume_text = parse_resume(tex_path)["plain_text"]
+    else:
+        raise HTTPException(status_code=400, detail="Attach a resume file or provide a task_id")
+
+    try:
+        recruiter_result = analyze(jd, resume_text)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}") from exc
+
+    result = score(recruiter_result, resume_text)
+    log.info(
+        "ATS check complete  source=%s  score=%s%%",
+        "file" if file is not None and file.filename else f"task={task_id}",
+        result["overall_score"],
+    )
+    return result
 
 
 # ── Resume MD editor endpoints ────────────────────────────────────────────────

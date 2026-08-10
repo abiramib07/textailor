@@ -445,6 +445,66 @@
             @if (boostError) {
               <div class="boost-error">⚠ {{ boostError }}</div>
             }
+
+            <!-- ── Compare / independently verify ── -->
+            <div class="verify-actions-row">
+              <button type="button" class="verify-action-btn" (click)="openCompare()">
+                Compare with original
+              </button>
+              <button type="button" class="verify-action-btn" (click)="toggleAtsVerify()">
+                {{ showAtsVerify ? 'Hide independent check' : 'Verify Score Independently' }}
+              </button>
+            </div>
+
+            @if (showAtsVerify) {
+              <div class="ats-verify-panel">
+                <p class="ats-verify-hint">
+                  Attach a resume file to check against a fresh upload, or leave it blank to
+                  re-scan the current tailored resume straight off disk — either way this runs a
+                  brand-new keyword analysis, not the cached result above.
+                </p>
+                <textarea
+                  class="ats-verify-jd"
+                  [(ngModel)]="atsVerifyJd"
+                  placeholder="Paste the job description…"
+                  [disabled]="atsVerifyLoading"
+                ></textarea>
+                <div class="ats-verify-row">
+                  <label for="atsVerifyFileInput" class="ats-verify-file-label">
+                    {{ atsVerifyFile ? atsVerifyFile.name : 'Attach resume file (optional)' }}
+                  </label>
+                  <input
+                    id="atsVerifyFileInput"
+                    type="file"
+                    class="ats-verify-file-input"
+                    accept=".pdf,.docx,.txt,.md,.tex"
+                    [disabled]="atsVerifyLoading"
+                    (change)="onAtsVerifyFileSelected($event)"
+                  />
+                  <button
+                    type="button"
+                    class="btn-primary action-btn"
+                    [disabled]="atsVerifyLoading || !atsVerifyJd.trim()"
+                    (click)="runAtsVerify()"
+                  >
+                    {{ atsVerifyLoading ? 'Scanning…' : 'Scan' }}
+                  </button>
+                </div>
+                @if (atsVerifyError) {
+                  <div class="boost-error">⚠ {{ atsVerifyError }}</div>
+                }
+                @if (atsVerifyResult) {
+                  <div class="ats-verify-result">
+                    <strong>Independent score: {{ atsVerifyResult.overall_score }}%</strong>
+                    ({{ atsVerifyResult.verdict }}) — {{ atsVerifyResult.required_found.length }}/{{
+                      atsVerifyResult.required_found.length + atsVerifyResult.required_missing.length
+                    }}
+                    required keywords found.
+                  </div>
+                }
+              </div>
+            }
+
             <!-- ── Verifier agent ── -->
             <div class="report-section verifier-section">
               <div class="report-section-title verifier-title-row">
@@ -1131,4 +1191,11 @@
       </div>
     </div>
   }
+
+  <!-- ── Resume comparison (base vs. tailored) ── -->
+  <app-resume-compare
+    [taskId]="taskId"
+    [open]="showCompare"
+    (closed)="onCompareClosed()"
+  ></app-resume-compare>
 </div>

@@ -56,6 +56,11 @@ export interface ScoreReport {
   verdict: string;
 }
 
+export interface CompareResult {
+  original: string;
+  tailored: string;
+}
+
 export interface BoostResult {
   boost_id: string | null;
   score: number;
@@ -160,6 +165,27 @@ export class ResumeService {
 
   getReport(taskId: string): Observable<ScoreReport> {
     return this.http.get<ScoreReport>(`${API}/api/report/${taskId}`);
+  }
+
+  /** Base resume (untouched) vs. this task's current tailored output,
+   * plain-text, for the side-by-side diff viewer. */
+  compareTask(taskId: string): Observable<CompareResult> {
+    return this.http.get<CompareResult>(`${API}/api/compare/${taskId}`);
+  }
+
+  /** Independent ATS rescan: re-runs recruiter analysis + scoring from
+   * scratch against fresh resume text, decoupled from any cached pipeline
+   * state. Pass `file` to score an uploaded resume, or omit it to have the
+   * backend re-read `taskId`'s current tex fresh off disk instead. */
+  atsCheck(jd: string, taskId: string, file?: File): Observable<ScoreReport> {
+    const formData = new FormData();
+    formData.append('jd', jd);
+    if (file) {
+      formData.append('file', file);
+    } else {
+      formData.append('task_id', taskId);
+    }
+    return this.http.post<ScoreReport>(`${API}/api/ats-check`, formData);
   }
 
   boostAts(taskId: string, selectedKeywords: string[]): Observable<BoostResult> {

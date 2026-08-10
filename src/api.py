@@ -39,6 +39,8 @@ from career.email_link import save_email_context
 from career.router import router as career_router
 from career.topic_mapping import log_keywords as log_jd_keywords
 from compiler import compile_tex
+from credentials.db import init_db as init_credentials_db
+from credentials.router import router as credentials_router
 from email_patterns import init_db as init_email_patterns_db
 from email_patterns import learn as learn_email_pattern
 from email_patterns import recent_patterns as recent_email_patterns
@@ -90,6 +92,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(career_router)
 app.include_router(resumes_router)
+app.include_router(credentials_router)
 
 # task_id -> task state
 _tasks: dict = {}
@@ -276,9 +279,9 @@ class GenerateRequest(BaseModel):
 
 @app.on_event("startup")
 def _startup() -> None:
-    """Initialize the auth, resumes, history, email-pattern, and career
-    databases on startup, in dependency order (resumes must exist before
-    the other tables can backfill their `resume_id` column)."""
+    """Initialize the auth, resumes, history, email-pattern, career, and
+    credentials databases on startup, in dependency order (resumes must
+    exist before the other tables can backfill their `resume_id` column)."""
     config = load_config()
     init_auth_db()
     init_resumes_db(config["resume_path"])
@@ -286,6 +289,7 @@ def _startup() -> None:
     init_history_db(default_resume_id)
     init_email_patterns_db(default_resume_id)
     init_career_db(default_resume_id)
+    init_credentials_db()
     log.info("TexTailor API ready on http://localhost:8000")
     log.info("Docs → http://localhost:8000/docs")
 

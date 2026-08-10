@@ -34,6 +34,9 @@ src/auth/data/
 # Career module SQLite DB + LinkedIn screenshot attachments — personal data
 src/career/data/
 
+# Credentials module SQLite DB + persisted encryption key — never tracked
+src/credentials/data/
+
 # Resume identities SQLite DB, plus each added resume's own folder
 # (main.tex stays tracked — it's the original single-resume template)
 src/resumes/data/

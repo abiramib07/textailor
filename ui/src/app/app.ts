@@ -32,6 +32,7 @@ import { ApplyLaterComponent } from './career/apply-later/apply-later';
 import { PostArchiveComponent } from './career/post-archive/post-archive';
 import { InterviewPrepComponent } from './career/interview-prep/interview-prep';
 import { TopicMappingComponent } from './career/topic-mapping/topic-mapping';
+import { JobCredentialsComponent } from './career/job-credentials/job-credentials';
 import { ResumesService, ResumeIdentity } from './resumes/resumes.service';
 import { ResumeCompareComponent } from './resume-compare/resume-compare';
 
@@ -67,7 +68,8 @@ type Tab =
   | 'apply-later'
   | 'post-archive'
   | 'interview-prep'
-  | 'topic-mapping';
+  | 'topic-mapping'
+  | 'job-credentials';
 type EditorState =
   | 'idle'
   | 'loading'
@@ -92,6 +94,7 @@ type EditorState =
     PostArchiveComponent,
     InterviewPrepComponent,
     TopicMappingComponent,
+    JobCredentialsComponent,
     ResumeCompareComponent,
   ],
   templateUrl: './app.html',
@@ -306,6 +309,7 @@ export class App implements OnInit, OnDestroy {
     { tab: 'post-archive', label: 'LinkedIn Archive' },
     { tab: 'interview-prep', label: 'Interview Prep' },
     { tab: 'topic-mapping', label: 'Topic Mapping' },
+    { tab: 'job-credentials', label: 'Account Credentials' },
   ];
 
   get isCareerTab(): boolean {

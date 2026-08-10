@@ -1062,6 +1062,11 @@
       <app-topic-mapping></app-topic-mapping>
     </main>
   }
+  @if (activeTab === 'job-credentials') {
+    <main class="layout career-layout">
+      <app-job-credentials></app-job-credentials>
+    </main>
+  }
 
   <!-- ── History sidebar (closed / half / full) ── -->
   @if (historySidebar !== 'closed') {

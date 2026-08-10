@@ -669,6 +669,19 @@
     color: #86efac !important;
     border-color: #166534 !important;
   }
+
+  // Selected keyword whose Weave-in/Add-to-Skills request is in flight —
+  // visually distinct from a plain selection so it's clear the click was
+  // received and is actively being processed, not stuck.
+  &--pending {
+    animation: kw-pending-pulse 1.2s ease-in-out infinite;
+    cursor: default;
+  }
+}
+
+@keyframes kw-pending-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 .kw-select-hint {
@@ -1585,6 +1598,31 @@
   border-radius: 8px;
   font-size: 12.5px;
   color: #94a3b8;
+}
+
+.rewrite-warning-banner {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+}
+
+.rewrite-warning-heading {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #f59e0b;
+  margin-bottom: 6px;
+}
+
+.rewrite-warning-line {
+  font-size: 12px;
+  color: #d1a34a;
+  margin: 0;
+
+  & + & {
+    margin-top: 6px;
+  }
 }
 
 .history-save-form {

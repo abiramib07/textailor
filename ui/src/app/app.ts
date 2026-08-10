@@ -348,7 +348,15 @@ export class App implements OnInit, OnDestroy {
   boostPdfUrl: SafeResourceUrl | null = null;
   boostPdfRawUrl: string | null = null;
   boostError = '';
+  // Sections the rewriter kept unchanged because the requested keywords
+  // couldn't be woven in honestly (e.g. a domain mismatch) — never silent.
+  boostWarnings: string[] = [];
   private _boostErrorTimer: ReturnType<typeof setTimeout> | null = null;
+  // Weave-in is a synchronous AI rewrite (2+ sequential Claude calls plus a
+  // LaTeX compile) that can take up to a minute with no server-side progress
+  // events — tick a visible counter so the wait doesn't read as a hang.
+  boostElapsedSeconds = 0;
+  private _boostElapsedTimer: ReturnType<typeof setInterval> | null = null;
 
   // ── Add-to-skills state (fast, non-AI alternative to Boost) ──────
   isAddingSkills = false;
@@ -412,9 +420,6 @@ export class App implements OnInit, OnDestroy {
   isRescoring = false;
 
   // ── Verifier state ──────────────────────────────────────────────
-  // Sections the rewriter kept unchanged because the requested keywords
-  // couldn't be woven in honestly (e.g. a domain mismatch) — never silent.
-  boostWarnings: string[] = [];
   verifierResult: VerifierResult | null = null;
   verifierLoading = false;
   verifierError = '';
@@ -505,6 +510,7 @@ export class App implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this._clearElapsedTimer();
+    this._clearBoostElapsedTimer();
     this._cancelPoll();
   }
 
@@ -816,6 +822,12 @@ export class App implements OnInit, OnDestroy {
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
   }
 
+  get boostElapsedLabel(): string {
+    const m = Math.floor(this.boostElapsedSeconds / 60);
+    const s = this.boostElapsedSeconds % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }
+
   get scoreColor(): string {
     const s = this.boostScore ?? this.status?.score;
     if (!s) return '#6b7280';
@@ -826,6 +838,14 @@ export class App implements OnInit, OnDestroy {
 
   get currentScore(): number | null {
     return this.boostScore ?? this.status?.score ?? null;
+  }
+
+  /** Sections the AI kept unchanged rather than fabricate honesty-violating
+   * content (e.g. weaving a healthcare keyword into a fintech resume) —
+   * from the initial generate pass and/or a later Weave-in, so this is
+   * never silently lost. */
+  get rewriteWarnings(): string[] {
+    return [...(this.status?.warnings ?? []), ...this.boostWarnings];
   }
 
   // ── ATS Report ──────────────────────────────────────────────────
@@ -868,6 +888,10 @@ export class App implements OnInit, OnDestroy {
   selectedMissingKeywords = new Set<string>();
 
   toggleKeywordSelection(keyword: string) {
+    // Ignore edits to the selection while a Weave-in/Add-to-Skills call is
+    // in flight — mutating it mid-request would desync what's visually
+    // "pending" from what was actually sent to the backend.
+    if (this.isBoosting || this.isAddingSkills) return;
     if (this.selectedMissingKeywords.has(keyword)) {
       this.selectedMissingKeywords.delete(keyword);
     } else {
@@ -898,8 +922,12 @@ export class App implements OnInit, OnDestroy {
   }
 
   confirmBoostSelection() {
+    // Don't clear the selection here — it's what drives the "pending" chip
+    // highlight while the request is in flight. Clearing it early made every
+    // selected keyword snap back to plain "missing" the instant you clicked,
+    // before the (20-90s) AI rewrite had even started, which read as the
+    // click doing nothing.
     const selected = [...this.selectedMissingKeywords];
-    this.selectedMissingKeywords.clear();
     this.boostAts(selected);
   }
 
@@ -907,25 +935,34 @@ export class App implements OnInit, OnDestroy {
     if (!this.taskId || this.isBoosting || selectedKeywords.length === 0) return;
     const taskId = this.taskId;
     this.isBoosting = true;
+    this._startBoostElapsedTimer();
     this.cdr.detectChanges();
 
     this.svc.boostAts(taskId, selectedKeywords).subscribe({
       next: (result) => {
         this.boostScore = result.score;
+        this.boostWarnings = result.warnings ?? [];
         if (result.has_pdf && result.boost_id) {
           this.boostPdfRawUrl = this.svc.chatPdfUrl(result.boost_id);
           this.boostPdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.boostPdfRawUrl);
         }
+        // Only clear now that we know it actually succeeded — the fresh
+        // report below is authoritative for which keywords are still missing.
+        this.selectedMissingKeywords.clear();
         // Full refresh (not a manual patch) so found/missing lists reflect
         // reality — the rewrite may have touched more than just the
         // keywords that were selected.
         this._loadReport(taskId);
         this.isBoosting = false;
+        this._clearBoostElapsedTimer();
         this.cdr.detectChanges();
       },
       error: (err) => {
+        // Keep the selection on failure so the user isn't forced to
+        // reselect every keyword before retrying.
         this._showBoostError(err?.error?.detail ?? "Couldn't weave in those keywords — please try again.");
         this.isBoosting = false;
+        this._clearBoostElapsedTimer();
         this.cdr.detectChanges();
       },
     });
@@ -947,7 +984,6 @@ export class App implements OnInit, OnDestroy {
    * straight into the Technical Skills table with no AI rewrite. */
   confirmAddToSkillsSelection() {
     const selected = [...this.selectedMissingKeywords];
-    this.selectedMissingKeywords.clear();
     this.addSkillsToResume(selected);
   }
 
@@ -964,6 +1000,7 @@ export class App implements OnInit, OnDestroy {
           this.boostPdfRawUrl = this.svc.chatPdfUrl(result.boost_id);
           this.boostPdfUrl = this.sanitizer.bypassSecurityTrustResourceUrl(this.boostPdfRawUrl);
         }
+        this.selectedMissingKeywords.clear();
         this._loadReport(taskId);
         this.isAddingSkills = false;
         this.cdr.detectChanges();
@@ -1015,14 +1052,6 @@ export class App implements OnInit, OnDestroy {
       next: (result) => {
         this.pendingPlan = {
           planId: result.plan_id,
-  /** Sections the AI kept unchanged rather than fabricate honesty-violating
-   * content (e.g. weaving a healthcare keyword into a fintech resume) —
-   * from the initial generate pass and/or a later Weave-in, so this is
-   * never silently lost. */
-  get rewriteWarnings(): string[] {
-    return [...(this.status?.warnings ?? []), ...this.boostWarnings];
-  }
-
           message: msg,
           summary: result.summary,
           changesPreview: result.changes_preview ?? [],
@@ -1116,7 +1145,6 @@ export class App implements OnInit, OnDestroy {
         this.chatState = 'idle';
         this.cdr.detectChanges();
       },
-        this.boostWarnings = result.warnings ?? [];
       error: () => {
         this._pushMsg({ role: 'error', text: 'Undo failed.' });
         this.chatState = 'idle';
@@ -1279,6 +1307,22 @@ export class App implements OnInit, OnDestroy {
     if (this._elapsedTimer !== null) {
       clearInterval(this._elapsedTimer);
       this._elapsedTimer = null;
+    }
+  }
+
+  private _startBoostElapsedTimer() {
+    this.boostElapsedSeconds = 0;
+    this._clearBoostElapsedTimer();
+    this._boostElapsedTimer = setInterval(() => {
+      this.boostElapsedSeconds++;
+      this.cdr.detectChanges();
+    }, 1000);
+  }
+
+  private _clearBoostElapsedTimer() {
+    if (this._boostElapsedTimer !== null) {
+      clearInterval(this._boostElapsedTimer);
+      this._boostElapsedTimer = null;
     }
   }
 

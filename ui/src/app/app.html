@@ -351,6 +351,8 @@
                       type="button"
                       class="kw kw--missing kw--clickable"
                       [class.kw--selected]="isKeywordSelected(kw)"
+                      [class.kw--pending]="isKeywordSelected(kw) && (isBoosting || isAddingSkills)"
+                      [disabled]="isBoosting || isAddingSkills"
                       (click)="toggleKeywordSelection(kw)"
                     >
                       {{ isKeywordSelected(kw) ? '✓' : '✗' }} {{ kw }}
@@ -378,6 +380,8 @@
                       type="button"
                       class="kw kw--missing kw--clickable"
                       [class.kw--selected]="isKeywordSelected(kw)"
+                      [class.kw--pending]="isKeywordSelected(kw) && (isBoosting || isAddingSkills)"
+                      [disabled]="isBoosting || isAddingSkills"
                       (click)="toggleKeywordSelection(kw)"
                     >
                       {{ isKeywordSelected(kw) ? '✓' : '✗' }} {{ kw }}
@@ -407,9 +411,14 @@
                   [disabled]="isBoosting"
                   (click)="confirmBoostSelection()"
                 >
-                  {{ isBoosting ? 'Weaving in…' : 'Weave in with AI' }}
+                  {{ isBoosting ? 'Weaving in… ' + boostElapsedLabel : 'Weave in with AI' }}
                 </button>
               </div>
+              @if (isBoosting) {
+                <p class="kw-select-hint">
+                  Rewriting resume sections with AI — this can take up to a minute, hang tight…
+                </p>
+              }
             }
             @if (reportData.needs_metric_count > 0) {
               <div class="report-section">

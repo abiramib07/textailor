@@ -67,14 +67,14 @@ export interface BoostResult {
   verdict: string;
   has_pdf: boolean;
   message?: string;
+  /** Sections kept unchanged because weaving in the requested keywords
+   * honestly wasn't possible (e.g. a domain mismatch). */
+  warnings: string[];
 }
 
 export interface AddSkillsResult extends BoostResult {
   added: string[];
 }
-  /** Sections kept unchanged because weaving in the requested keywords
-   * honestly wasn't possible (e.g. a domain mismatch). */
-  warnings: string[];
 
 export interface VerifierKeyword {
   keyword: string;
